@@ -1,0 +1,46 @@
+.lobby-page {
+  background-image: url('/images/lobby-background.jpg');
+  background-size: cover;
+  background-position: center;
+  min-height: 100vh;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.lobby-box {
+  background-color: rgba(0, 0, 0, 0.75);
+  padding: 2rem;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+}
+
+.lobby-box h1,
+.lobby-box h3,
+.lobby-box h4 {
+  margin-bottom: 1rem;
+}
+
+.lobby-box ul {
+  list-style: none;
+  padding: 0;
+}
+
+.lobby-box li {
+  margin: 0.3rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lobby-box button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #e74c3c;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}

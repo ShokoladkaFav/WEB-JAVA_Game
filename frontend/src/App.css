@@ -1,0 +1,12 @@
+.app {
+  height: 100vh;
+  width: 100vw;
+  background-image: url('/images/background.jpg'); /* Замінити на свій шлях */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  flex-direction: column;
+  color: white;
+  font-family: sans-serif;
+}

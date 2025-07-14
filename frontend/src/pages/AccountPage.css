@@ -1,0 +1,53 @@
+.account-page {
+  background-image: url('/images/account-background.jpg');
+  background-size: cover;
+  background-position: center;
+  min-height: 100vh;
+  position: relative;
+  color: white;
+}
+
+/* Центр */
+.account-form {
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 2rem;
+  border-radius: 12px;
+  max-width: 700px;
+  width: 90%;
+  text-align: center;
+  margin: 100px auto;
+}
+
+.profile-img {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 1rem;
+}
+
+/* Верхній правий кут */
+.friend-request-box {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 220px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+/* Верхній лівий кут */
+.achievements-box {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  width: 220px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.friend-list-box {
+  margin-top: 1rem;
+}
