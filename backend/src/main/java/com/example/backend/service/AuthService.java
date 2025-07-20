@@ -17,14 +17,14 @@ public class AuthService {
         if (userRepository.findByUsername(username).isPresent()) {
             return false;
         }
-        User user = new User(username, password); // TODO: hash password
+        User user = new User(username, password);
         userRepository.save(user);
         return true;
     }
 
     public Optional<User> login(String username, String password) {
         Optional<User> user = userRepository.findByUsername(username);
-        if (user.isPresent() && user.get().getPassword().equals(password)) { // TODO: hash check
+        if (user.isPresent() && user.get().getPassword().equals(password)) {
             return user;
         }
         return Optional.empty();
