@@ -1,51 +1,24 @@
-/* GameBoard.css — стилі ігрового поля */
-
+/* Загальний контейнер гри */
 .game-board {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   padding: 20px;
-  gap: 10px;
+  position: relative;
 }
 
-.cell {
-  width: 80px;
-  height: 80px;
-  background-color: #e0e0e0;
-  border: 2px solid #ccc;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 24px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.cell:hover {
-  background-color: #d0d0d0;
-}
-
-.player-1 {
-  color: #007bff;
-}
-
-.player-2 {
-  color: #dc3545;
-}
-
-/* ✅ Новий стиль для списку гравців у верхньому лівому куті */
+/* 📌 Список гравців у верхньому лівому куті */
 .player-list-overlay {
-  position: absolute;
-  top: 80px;
+  position: fixed; /* ✅ Фіксуємо до екрана */
+  top: 70px;
   left: 10px;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 8px 12px;
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px 14px;
+  border-radius: 8px;
   color: white;
   font-size: 14px;
-  max-width: 200px;
+  max-width: 240px;
+  z-index: 1000; /* Щоб було поверх усього */
 }
 
 .player-list-overlay ul {
@@ -55,5 +28,73 @@
 }
 
 .player-list-overlay li {
-  margin: 2px 0;
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.player-list-overlay li:last-child {
+  margin-bottom: 0;
+}
+
+/* 📷 Маленькі аватарки у списку гравців */
+.small-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  margin-right: 8px;
+  object-fit: cover;
+  border: 1px solid white;
+}
+
+.small-avatar.placeholder {
+  background-color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+}
+
+/* 🔄 Контейнер для кола гравців */
+.circle-container {
+  position: relative;
+  width: 500px;
+  height: 500px;
+  margin-top: 100px;
+}
+
+.player-avatar {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.player-avatar img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.player-name {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  color: white;
 }

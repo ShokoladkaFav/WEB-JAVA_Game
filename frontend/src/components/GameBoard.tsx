@@ -7,6 +7,7 @@ type Player = {
   id: string;
   username: string;
   role: string | null;
+  avatar?: string | null;
 };
 
 const GameBoard = () => {
@@ -20,41 +21,36 @@ const GameBoard = () => {
   useEffect(() => {
     const username = sessionStorage.getItem('username') || '';
 
-    // 1) Гарантовано заходимо в кімнату сесії (на випадок переходу з лоббі на гру)
     if (sessionName && username) {
       socket.emit('joinLobby', { sessionName, username });
     }
 
-    // 2) Функція запиту поточного стану
     const requestState = () => {
       if (sessionName) {
         socket.emit('getSessionState', { sessionName });
       }
     };
 
-    // Якщо сокет уже підключений (частий кейс — ми прийшли з лоббі)
     if (socket.connected) {
       requestState();
     } else {
       socket.once('connect', requestState);
     }
 
-    // ---- Лістенери ----
     const onConnect = () => setMyId(socket.id);
 
     const onLobbyStateUpdated = (session: any) => {
       if (!session || session.name !== sessionName) return;
 
-      // session.players з сервера — масив юзернеймів (string[])
-      // Уніфікуємо до Player[]
       const mapped: Player[] = (session.players || []).map((u: any) => {
-        // якщо прийде об'єкт — підтримаємо і його
         const username = typeof u === 'string' ? u : (u.username ?? '');
         const role = typeof u === 'string' ? null : (u.role ?? null);
+        const avatar = localStorage.getItem(`profileImage_${username}`);
         return {
-          id: username, // id тимчасово = username
+          id: username,
           username,
           role,
+          avatar: avatar || null,
         };
       });
       setPlayers(mapped);
@@ -67,10 +63,14 @@ const GameBoard = () => {
       availableRoles: string[];
       players: Player[];
     }) => {
+      const withAvatars = players.map((p) => ({
+        ...p,
+        avatar: localStorage.getItem(`profileImage_${p.username}`) || null,
+      }));
       setAvailableRoles(availableRoles || []);
-      setPlayers(players || []);
+      setPlayers(withAvatars);
       setPhase(1);
-      setCurrentPickerId(players && players.length > 0 ? players[0].id : '');
+      setCurrentPickerId(withAvatars.length > 0 ? withAvatars[0].id : '');
     };
 
     const onNextPicker = ({
@@ -85,7 +85,11 @@ const GameBoard = () => {
     };
 
     const onRolesSelected = (updatedPlayers: Player[]) => {
-      setPlayers(updatedPlayers || []);
+      const withAvatars = updatedPlayers.map((p) => ({
+        ...p,
+        avatar: localStorage.getItem(`profileImage_${p.username}`) || null,
+      }));
+      setPlayers(withAvatars || []);
     };
 
     const onStartGamePhase = ({ phase }: { phase: number }) => {
@@ -99,7 +103,6 @@ const GameBoard = () => {
     socket.on('rolesSelected', onRolesSelected);
     socket.on('startGamePhase', onStartGamePhase);
 
-    // cleanup
     return () => {
       socket.off('connect', onConnect);
       socket.off('lobbyStateUpdated', onLobbyStateUpdated);
@@ -118,7 +121,7 @@ const GameBoard = () => {
 
   return (
     <div className="game-board">
-      {/* Фіксована панель гравців зверху-зліва */}
+      {/* 📌 Список гравців з аватарками у верхньому лівому куті */}
       <div className="player-list-overlay">
         <strong>Гравці:</strong>
         <ul>
@@ -127,11 +130,53 @@ const GameBoard = () => {
           ) : (
             players.map((p) => (
               <li key={p.id}>
+                {p.avatar ? (
+                  <img
+                    src={p.avatar}
+                    alt={p.username}
+                    className="small-avatar"
+                  />
+                ) : (
+                  <div className="small-avatar placeholder">
+                    {p.username.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 {p.username} {p.role ? `— ${p.role}` : ''}
               </li>
             ))
           )}
         </ul>
+      </div>
+
+      {/* 🔄 Гравці по колу */}
+      <div className="circle-container">
+        {players.map((p, index) => {
+          const angle = (index / players.length) * 2 * Math.PI;
+          const x = 200 * Math.cos(angle);
+          const y = 200 * Math.sin(angle);
+          return (
+            <div
+              key={p.id}
+              className="player-avatar"
+              style={{
+                transform: `translate(${x}px, ${y}px)`,
+                border: myId === p.id ? '3px solid gold' : 'none',
+              }}
+            >
+              {p.avatar ? (
+                <img src={p.avatar} alt={p.username} />
+              ) : (
+                <div className="avatar-placeholder">
+                  {p.username.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="player-name">
+                {p.username}
+                {p.role ? ` — ${p.role}` : ''}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <h1>🎮 Гра: {sessionName}</h1>
@@ -156,15 +201,6 @@ const GameBoard = () => {
           {players.find((p) => p.id === currentPickerId)?.username || '...'}
         </p>
       )}
-
-      <h3>Гравці та їх ролі:</h3>
-      <ul>
-        {players.map((player) => (
-          <li key={player.id}>
-            {player.username} — {player.role || 'Ще не вибрано'}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 };
