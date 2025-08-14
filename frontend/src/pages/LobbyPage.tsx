@@ -1,103 +1,180 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import './LobbyPage.css'
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import socket from '../sockets/socket';
+import './LobbyPage.css';
 
 type GameSession = {
-  name: string
-  host: string
-  players: string[]
-}
+  name: string;
+  host: string;
+  players: string[];
+  selectedRoles?: { [key: number]: string };
+  readyPlayers?: string[];
+};
+
+const roleGroups: { [key: number]: string[] } = {
+  1: ['Вбивця'],
+  2: ['Шпигун'],
+  3: ['Таємний агент', 'Чарівник', 'Провидець'],
+  4: ['Імператор'],
+  5: ['Кардинал', 'Урядовець', 'Банкір', 'Архітектор', 'Абат'],
+  6: ['Купець', 'Крамар'],
+  7: ['Єпископ', 'Вчена', 'Навігатор', 'Мер', 'Міністр'],
+  8: ['Дипломат', 'Маршал'],
+  9: ['Генерал', 'Митець'],
+  10: ['Король'],
+};
 
 function LobbyPage() {
-  const { sessionName } = useParams()
-  const username = sessionStorage.getItem('username')
-  const navigate = useNavigate()
-  const [session, setSession] = useState<GameSession | null>(null)
+  const { t } = useTranslation();
+  const { sessionName } = useParams();
+  const username = sessionStorage.getItem('username');
+  const navigate = useNavigate();
+  const [session, setSession] = useState<GameSession | null>(null);
 
+  // Отримання оновлень стану лоббі від сервера
   useEffect(() => {
-    const interval = setInterval(() => {
-      const sessions: GameSession[] = JSON.parse(localStorage.getItem('sessions') || '[]')
-      const found = sessions.find(s => s.name === sessionName)
-
-      if (!found) {
-        alert('Сесію було закрито або вона недоступна.')
-        navigate('/')
-        return
+    socket.on('lobbyStateUpdated', (updatedSession: GameSession) => {
+      if (updatedSession.name === sessionName) {
+        setSession(updatedSession);
       }
+    });
 
-      if (username && !found.players.includes(username)) {
-        alert('Вас виключили з лоббі.')
-        navigate('/')
-        return
+    socket.on('lobbyClosed', () => {
+      alert(t('session_closed'));
+      navigate('/');
+    });
+
+    socket.on('kicked', ({ sessionName }) => {
+      alert(`Вас вигнали з лоббі "${sessionName}"`);
+      navigate('/');
+    });
+
+    socket.on('gameStarted', (data: { sessionName: string; players: string[] }) => {
+      if (data.sessionName === sessionName) {
+        navigate(`/game/${data.sessionName}`);
       }
+    });
 
-      setSession(found)
-    }, 1000)
+    return () => {
+      socket.off('lobbyStateUpdated');
+      socket.off('lobbyClosed');
+      socket.off('kicked');
+      socket.off('gameStarted');
+    };
+  }, [navigate, sessionName, t]);
 
-    return () => clearInterval(interval)
-  }, [sessionName, username, navigate])
+  // Приєднання до кімнати
+  useEffect(() => {
+    if (sessionName && username) {
+      socket.emit('joinLobby', { sessionName, username });
+    }
+  }, [sessionName, username]);
 
   const leaveLobby = () => {
-    if (!session || !username) return
-
-    const updatedPlayers = session.players.filter(p => p !== username)
-    const updatedSession = { ...session, players: updatedPlayers }
-
-    const allSessions: GameSession[] = JSON.parse(localStorage.getItem('sessions') || '[]')
-    const newSessions = allSessions.map(s =>
-      s.name === session.name ? updatedSession : s
-    )
-
-    localStorage.setItem('sessions', JSON.stringify(newSessions))
-    navigate('/')
-  }
+    if (sessionName && username) {
+      socket.emit('leaveLobby', { sessionName, username });
+    }
+    navigate('/');
+  };
 
   const kickPlayer = (player: string) => {
-    if (!session || !username || session.host !== username) return
+    if (sessionName) {
+      socket.emit('kickPlayer', { sessionName, playerToKick: player });
+    }
+  };
 
-    const updatedPlayers = session.players.filter(p => p !== player)
-    const updatedSession = { ...session, players: updatedPlayers }
+  const toggleReady = () => {
+    if (sessionName && username) {
+      socket.emit('toggleReady', { sessionName, username });
+    }
+  };
 
-    const allSessions: GameSession[] = JSON.parse(localStorage.getItem('sessions') || '[]')
-    const newSessions = allSessions.map(s =>
-      s.name === session.name ? updatedSession : s
-    )
+  const handleRoleChange = (groupNum: number, role: string) => {
+    if (sessionName) {
+      const updatedRoles = { ...session?.selectedRoles, [groupNum]: role };
+      socket.emit('updateRoles', { sessionName, roles: updatedRoles });
+    }
+  };
 
-    localStorage.setItem('sessions', JSON.stringify(newSessions))
-    setSession(updatedSession)
-  }
+  const startGame = () => {
+    if (sessionName) {
+      socket.emit('startGame', { sessionName });
+    }
+  };
+
+  const maxRoleNumber = session?.players?.length || 4;
+  const everyoneReady = session?.players
+    ?.filter((p) => p !== session.host)
+    .every((p) => session.readyPlayers?.includes(p));
 
   if (!session || !session.players || !username) {
     return (
       <div className="lobby-page">
-        <p>Сесія недоступна або сталася помилка.</p>
-        <button onClick={() => navigate('/')}>Повернутись</button>
+        <p>{t('session_unavailable')}</p>
+        <button onClick={() => navigate('/')}>{t('return')}</button>
       </div>
-    )
+    );
   }
 
   return (
     <div className="lobby-page" style={{ backgroundImage: `url('/images/lobby-background.jpg')` }}>
       <div className="lobby-content">
-        <h2>Лоббі: {session.name}</h2>
-        <p>Хост: {session.host}</p>
+        <h2>{t('lobby_title', { name: session.name })}</h2>
+        <p>{t('host', { host: session.host })}</p>
 
-        <h4>Гравці:</h4>
+        <h4>{t('players')}</h4>
         <ul>
           {session.players.map((p, i) => (
             <li key={i}>
               {p}
+              {session.readyPlayers?.includes(p) && ' ✅'}
               {session.host === username && p !== username && (
-                <button onClick={() => kickPlayer(p)}>Викинути</button>
+                <button onClick={() => kickPlayer(p)}>{t('kick')}</button>
               )}
             </li>
           ))}
         </ul>
 
-        <button onClick={leaveLobby}>Вийти з лоббі</button>
+        {session.host === username ? (
+          <>
+            <h3>{t('select_roles')}</h3>
+            {Object.entries(roleGroups)
+              .filter(([group]) => Number(group) <= maxRoleNumber)
+              .map(([group, roles]) => (
+                <div key={group}>
+                  <label>Роль {group}: </label>
+                  <select
+                    value={session.selectedRoles?.[Number(group)] || ''}
+                    onChange={(e) => handleRoleChange(Number(group), e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {roles.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            <button onClick={startGame} disabled={!everyoneReady}>
+              {t('start_game')}
+            </button>
+            {!everyoneReady && <p style={{ color: 'gray' }}>{t('not_all_ready')}</p>}
+          </>
+        ) : (
+          <>
+            <button onClick={toggleReady}>
+              {session.readyPlayers?.includes(username) ? t('unready') : t('ready')}
+            </button>
+            <p>{t('waiting_for_host')}</p>
+          </>
+        )}
+
+        <button onClick={leaveLobby}>{t('leave_lobby')}</button>
       </div>
     </div>
-  )
+  );
 }
 
-export default LobbyPage
+export default LobbyPage;

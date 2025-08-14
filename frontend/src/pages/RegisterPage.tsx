@@ -1,87 +1,70 @@
-import './AuthPage.css'
-import './RegisterPage.css'
-import { useTranslation } from 'react-i18next'
-import { useState } from 'react'
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import './RegisterPage.css';
 
-function RegisterPage() {
-  const { t } = useTranslation()
+const RegisterPage: React.FC = () => {
+  const { t } = useTranslation();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [username, setUsername] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!username || !email || !password) {
-      setMessage('Заповніть усі поля!')
-      return
-    }
-
-    if (password.length < 6) {
-      setMessage('Пароль має містити щонайменше 6 символів.')
-      return
-    }
-
-    const data = {
-      username: username.trim(),
-      email: email.trim(),
-      password: password,
-    }
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage('');
+    setLoading(true);
 
     try {
-      const response = await fetch('https://kursachgame.atwebpages.com/register.php', {
+      const response = await fetch('http://kursachgame.atwebpages.com/register.php', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ username, password }),
+      });
 
-      const result = await response.json()
+      const data = await response.json();
 
-      if (result.success) {
-        setMessage('Реєстрація успішна!')
-        setUsername('')
-        setEmail('')
-        setPassword('')
+      if (data.success) {
+        setMessage(t('register_success'));
+        setUsername('');
+        setPassword('');
       } else {
-        setMessage(result.message || 'Помилка при реєстрації')
+        setMessage(data.message || t('register_failed'));
       }
     } catch (error) {
-      console.error('❌ Помилка при fetch:', error)
-      setMessage('Не вдалося зв’язатися з сервером')
+      console.error('Register error:', error);
+      setMessage(t('error.network'));
     }
-  }
+
+    setLoading(false);
+  };
 
   return (
     <div className="register-page">
-      <form className="register-form auth-form" onSubmit={handleSubmit}>
-        <h1>{t('register')}</h1>
-        <input
-          type="text"
-          placeholder={t('username')}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          type="email"
-          placeholder={t('email')}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder={t('password')}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit">{t('register')}</button>
-        {message && <p className="message">{message}</p>}
-      </form>
+      <div className="register-form">
+        <h2>{t('register_title')}</h2>
+        <form className="auth-form" onSubmit={handleRegister}>
+          <input
+            type="text"
+            placeholder={t('username')}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder={t('password')}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? t('register_loading') : t('register_button')}
+          </button>
+          {message && <div className="message">{message}</div>}
+        </form>
+      </div>
     </div>
-  )
-}
+  );
+};
 
-export default RegisterPage
+export default RegisterPage;

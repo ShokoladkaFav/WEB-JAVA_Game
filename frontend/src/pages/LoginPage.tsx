@@ -1,80 +1,90 @@
-import './AuthPage.css'
-import './LoginPage.css'
-import { useTranslation } from 'react-i18next'
-import { useState } from 'react'
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import socket from '../sockets/socket';
+import './AuthPage.css';
+import './LoginPage.css';
 
-function LoginPage() {
-  const { t } = useTranslation()
-
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
+const LoginPage: React.FC = () => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (!username || !password) {
-      setMessage('Заповніть усі поля!')
-      return
+      setMessage(t('login.fill_all_fields'));
+      return;
     }
 
     try {
-      const response = await fetch('https://kursachgame.atwebpages.com/login.php', {
+      const response = await fetch('http://kursachgame.atwebpages.com/login.php', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
-      })
+      });
 
-      const result = await response.json()
+      const result = await response.json();
 
       if (result.success) {
-        setMessage('Вхід успішний!')
+        setMessage(t('login_success'));
+        sessionStorage.setItem('username', username);
 
-        // ✅ Зберігаємо ім’я користувача лише на сесію
-        sessionStorage.setItem('username', username)
+        // Connect socket with auth details
+        socket.auth = { username };
+        socket.connect();
 
-        // Зберігаємо ім’я в загальному списку (для перевірки існування)
-        const allUsers = JSON.parse(localStorage.getItem('allUsers') || '[]')
+        const allUsers = JSON.parse(localStorage.getItem('allUsers') || '[]') || [];
         if (!allUsers.includes(username)) {
-          localStorage.setItem('allUsers', JSON.stringify([...allUsers, username]))
+          localStorage.setItem('allUsers', JSON.stringify([...allUsers, username]));
         }
 
-        // Перенаправлення на сторінку акаунту
         setTimeout(() => {
-          window.location.href = '/account'
-        }, 1000)
+          navigate('/'); // Перехід на головну сторінку
+        }, 1000);
       } else {
-        setMessage(result.message || 'Помилка при вході')
+        const errorKey = result.message === 'Invalid password'
+          ? 'login_invalid_password'
+          : result.message === 'User not found'
+          ? 'login_user_not_found'
+          : 'login_error';
+
+        setMessage(t(errorKey));
       }
     } catch (error) {
-      console.error('❌ Помилка при вході:', error)
-      setMessage('Не вдалося зв’язатися з сервером')
+      console.error('Login error:', error);
+      setMessage(t('login_network_error'));
     }
-  }
+  };
 
   return (
     <div className="login-page">
-      <form className="login-form" onSubmit={handleSubmit}>
-        <h1>{t('login')}</h1>
-        <input
-          type="text"
-          placeholder={t('username')}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder={t('password')}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit">{t('login')}</button>
-        {message && <p style={{ marginTop: '10px', color: 'white' }}>{message}</p>}
-      </form>
+      <div className="login-form">
+        <h2>{t('login_title')}</h2>
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <input
+            type="text"
+            placeholder={t('login_username')}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder={t('login_password')}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="submit">{t('login_button')}</button>
+          {message && <div className="message">{message}</div>}
+        </form>
+      </div>
     </div>
-  )
-}
+  );
+};
 
-export default LoginPage
+export default LoginPage;

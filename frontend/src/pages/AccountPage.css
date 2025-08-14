@@ -51,3 +51,28 @@
 .friend-list-box {
   margin-top: 1rem;
 }
+
+/* Styling for accept/reject/remove buttons */
+.friend-request-box ul li,
+.friend-list-box ul li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.friend-request-box li button,
+.friend-list-box li button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  margin-left: 8px;
+  padding: 0;
+  vertical-align: middle;
+  transition: transform 0.2s;
+}
+
+.friend-request-box li button:hover,
+.friend-list-box li button:hover {
+    transform: scale(1.2);
+}

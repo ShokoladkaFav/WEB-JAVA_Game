@@ -1,9 +1,14 @@
+// 🔌 ІМПОРТИ
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
+import socket from '../sockets/socket'
 import './AccountPage.css'
 
+// 📄 КОМПОНЕНТ
 function AccountPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
 
   const [username, setUsername] = useState<string | null>(null)
   const [profileImage, setProfileImage] = useState<string | null>(null)
@@ -14,6 +19,7 @@ function AccountPage() {
   const [experience, setExperience] = useState(0)
   const [achievements, setAchievements] = useState<string[]>([])
 
+  // ⏳ ЗАГРУЗКА ДАНИХ
   useEffect(() => {
     const user = sessionStorage.getItem('username')
     setUsername(user)
@@ -29,25 +35,49 @@ function AccountPage() {
       setExperience(Number(localStorage.getItem(`experience_${user}`) || 0))
       setAchievements(load('achievements', []))
 
-      const interval = setInterval(() => {
-        const updatedRequests: string[] = load('friendRequests', [])
-        const updatedFriends: string[] = load('friends', [])
+      // 🟢 Socket: повідомити сервер про нового юзера
+      socket.emit('registerUsername', user)
 
-        setFriendRequests(prev =>
-          JSON.stringify(prev) !== JSON.stringify(updatedRequests) ? updatedRequests : prev
-        )
-        setFriends(prev =>
-          JSON.stringify(prev) !== JSON.stringify(updatedFriends) ? updatedFriends : prev
-        )
-      }, 1000)
+      // 🟢 Socket: отримати поточні запити та друзі
+      socket.emit('getFriendData', { username: user })
 
-      return () => clearInterval(interval)
+      socket.on('friendData', (data) => {
+        setFriendRequests(data.requests || [])
+        setFriends(data.friends || [])
+        localStorage.setItem(`friendRequests_${user}`, JSON.stringify(data.requests || []))
+        localStorage.setItem(`friends_${user}`, JSON.stringify(data.friends || []))
+      })
+
+      socket.on('friendRequestReceived', (data) => {
+        const requests = data.requests || []
+        setFriendRequests(requests)
+        localStorage.setItem(`friendRequests_${user}`, JSON.stringify(requests))
+      })
+
+      socket.on('friendAdded', (data) => {
+        setFriends(data.friends || [])
+        setFriendRequests(data.requests || [])
+        localStorage.setItem(`friends_${user}`, JSON.stringify(data.friends || []))
+        localStorage.setItem(`friendRequests_${user}`, JSON.stringify(data.requests || []))
+      })
+
+      socket.on('friendRemoved', (data) => {
+        setFriends(data.friends || [])
+        localStorage.setItem(`friends_${user}`, JSON.stringify(data.friends || []))
+      })
+    }
+
+    return () => {
+      socket.off('friendData')
+      socket.off('friendRequestReceived')
+      socket.off('friendAdded')
+      socket.off('friendRemoved')
     }
   }, [])
 
   const handleLogout = () => {
     sessionStorage.removeItem('username')
-    window.location.href = '/'
+    navigate('/')
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,7 +99,6 @@ function AccountPage() {
 
     if (trimmed && trimmed !== username) {
       const allUsers = JSON.parse(localStorage.getItem('allUsers') || '[]')
-
       if (!allUsers.includes(trimmed)) {
         alert(t('user_not_exist'))
         return
@@ -89,6 +118,7 @@ function AccountPage() {
         localStorage.setItem(targetRequestsKey, JSON.stringify(targetRequests))
         alert(`${t('request_sent')} ${trimmed}`)
         setFriendInput('')
+        socket.emit('sendFriendRequest', { to: trimmed, from: username })
       } else {
         alert(t('request_exists'))
       }
@@ -97,46 +127,41 @@ function AccountPage() {
 
   const acceptFriendRequest = (sender: string) => {
     if (!username) return
+    socket.emit('acceptFriendRequest', {
+      requester: sender,
+      acceptor: username,
+    })
+  }
 
-    const updatedRequests = friendRequests.filter((f: string) => f !== sender)
-    const updatedFriends = [...friends, sender]
-
+  const rejectFriendRequest = (sender: string) => {
+    if (!username) return
+    const updatedRequests = friendRequests.filter((req) => req !== sender)
     setFriendRequests(updatedRequests)
-    setFriends(updatedFriends)
-
     localStorage.setItem(`friendRequests_${username}`, JSON.stringify(updatedRequests))
-    localStorage.setItem(`friends_${username}`, JSON.stringify(updatedFriends))
-
-    const senderFriends = JSON.parse(localStorage.getItem(`friends_${sender}`) || '[]')
-    if (!senderFriends.includes(username)) {
-      senderFriends.push(username)
-      localStorage.setItem(`friends_${sender}`, JSON.stringify(senderFriends))
-    }
+    // ❌ НЕ сповіщаємо іншого юзера
+    socket.emit('rejectFriendRequest', {
+      from: sender,
+      to: username,
+    })
   }
 
   const removeFriend = (friendName: string) => {
     if (!username) return
-    const updated = friends.filter((f: string) => f !== friendName)
-    setFriends(updated)
-    localStorage.setItem(`friends_${username}`, JSON.stringify(updated))
-
-    const theirFriends = JSON.parse(localStorage.getItem(`friends_${friendName}`) || '[]')
-    const theirUpdated = theirFriends.filter((f: string) => f !== username)
-    localStorage.setItem(`friends_${friendName}`, JSON.stringify(theirUpdated))
+    socket.emit('removeFriend', {
+      user: username,
+      friendToRemove: friendName,
+    })
   }
 
   const addExperience = (amount: number) => {
     if (!username) return
-
     let newExp = experience + amount
     let newLevel = level
     const threshold = 100
-
     while (newExp >= threshold) {
       newExp -= threshold
       newLevel += 1
     }
-
     setExperience(newExp)
     setLevel(newLevel)
     localStorage.setItem(`experience_${username}`, newExp.toString())
@@ -193,6 +218,7 @@ function AccountPage() {
                 <li key={i}>
                   {req}
                   <button onClick={() => acceptFriendRequest(req)}>✅</button>
+                  <button onClick={() => rejectFriendRequest(req)}>❌</button>
                 </li>
               ))}
             </ul>
@@ -214,17 +240,15 @@ function AccountPage() {
         </div>
       </div>
 
-      {/* Account Center */}
+      {/* Account Info */}
       <div className="account-form">
         <h1>{t('profile_title')}</h1>
         {profileImage && <img src={profileImage} alt="Avatar" className="profile-img" />}
         <input type="file" onChange={handleImageUpload} accept="image/*" />
-
         <p><strong>{t('username')}:</strong> {username}</p>
         <p><strong>{t('level')}:</strong> {level}</p>
         <p><strong>{t('experience')}:</strong> {experience}/100</p>
         <button onClick={() => addExperience(30)}>{t('add_experience')}</button>
-
         <br /><br />
         <button onClick={handleLogout}>{t('logout')}</button>
       </div>
