@@ -1,15 +1,17 @@
-/* Загальний контейнер гри */
+/* 🎮 Загальний контейнер гри */
 .game-board {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 20px;
   position: relative;
+  min-height: 100vh;
+  overflow: hidden;
 }
 
 /* 📌 Список гравців у верхньому лівому куті */
 .player-list-overlay {
-  position: fixed; /* ✅ Фіксуємо до екрана */
+  position: fixed;
   top: 70px;
   left: 10px;
   background: rgba(0, 0, 0, 0.7);
@@ -18,7 +20,7 @@
   color: white;
   font-size: 14px;
   max-width: 240px;
-  z-index: 1000; /* Щоб було поверх усього */
+  z-index: 1000;
 }
 
 .player-list-overlay ul {
@@ -37,7 +39,6 @@
   margin-bottom: 0;
 }
 
-/* 📷 Маленькі аватарки у списку гравців */
 .small-avatar {
   width: 26px;
   height: 26px;
@@ -47,16 +48,14 @@
   border: 1px solid white;
 }
 
-.small-avatar.placeholder {
-  background-color: #555;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
+.small-role-card {
+  width: 26px;
+  height: 36px;
+  object-fit: contain;
+  margin-left: 6px;
 }
 
-/* 🔄 Контейнер для кола гравців */
+/* 🔄 Коло гравців */
 .circle-container {
   position: relative;
   width: 500px;
@@ -97,4 +96,236 @@
   margin-top: 4px;
   font-size: 14px;
   color: white;
+}
+
+/* 🃏 Відображення ролі під іменем */
+.role-info {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.role-card {
+  width: 70px;
+  height: 100px;
+  object-fit: contain;
+  margin-top: 4px;
+}
+
+/* 🃏 Overlay вибору ролей */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+  backdrop-filter: blur(4px);
+}
+
+.overlay-content {
+  background: rgba(20, 20, 20, 0.95);
+  padding: 20px 30px;
+  border-radius: 12px;
+  text-align: center;
+  max-width: 700px;
+  width: 90%;
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.overlay-content h3 {
+  color: gold;
+  font-size: 22px;
+  margin-bottom: 16px;
+}
+
+.role-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.role-card-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.role-card-button:hover {
+  border-color: gold;
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-6px);
+}
+
+.role-card-button img {
+  width: 90px;
+  height: 130px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+.role-card-button span {
+  font-size: 15px;
+  color: white;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* 🎮 Назва гри */
+.game-title {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  font-weight: bold;
+  color: white;
+  text-align: center;
+  z-index: 1000;
+}
+
+/* 📌 Фаза */
+.game-phase {
+  position: fixed;
+  top: 10px;
+  right: 20px;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+  text-align: right;
+  z-index: 1000;
+}
+
+/* 🟢 Монети */
+.coins {
+  position: fixed;
+  top: 50px;
+  right: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 6px 12px;
+  border-radius: 8px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
+
+.coin-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.coin-count {
+  font-size: 18px;
+  font-weight: bold;
+  color: gold;
+  line-height: 1;
+}
+
+/* 🔴 Рука карт */
+.hand-cards {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+}
+
+.card-hand {
+  width: 100px;
+  height: 150px;
+  object-fit: contain;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.card-hand:hover {
+  transform: translateY(-10px);
+  border-color: gold;
+}
+
+/* 🔵 Побудовані квартали */
+.built-districts {
+  position: fixed;
+  bottom: 200px;
+  left: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 300px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+}
+
+.built-districts img {
+  width: 80px;
+  height: 120px;
+  border: 2px solid white;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+/* ⚫ Інфо про роль */
+.role-info-box {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  width: 260px;
+  min-height: 120px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ddd;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+}
+
+.role-info-box h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: gold;
+  text-align: center;
+}
+
+.role-info-box p {
+  margin: 0;
+  font-size: 14px;
+  color: #ccc;
+  text-align: justify;
+}
+
+/* 🕒 Анімація появи overlay */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

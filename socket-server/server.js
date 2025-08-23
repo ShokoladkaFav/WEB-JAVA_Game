@@ -10,23 +10,19 @@ app.use(cors());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
+  cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 
 // -------------------------
 // Стан сервера в пам'яті
 // -------------------------
-let sessions = {};            // sessionName -> { name, host, password, maxPlayers, players[], readyPlayers[], selectedRoles }
+let sessions = {};            // sessionName -> { name, host, password, maxPlayers, players[], readyPlayers[], selectedRoles, game? }
 const userSockets = {};       // username -> socket.id
-const userToSession = {};     // username -> sessionName (останнє відоме)
+const userToSession = {};     // username -> sessionName
 const friendRequests = {};    // username -> [requesters]
 const userFriends = {};       // username -> [friends]
 const disconnectTimers = {};  // username -> timeoutId
 
-// Відправити оновлений стан лоббі всім у кімнаті
 function updateLobbyState(sessionName) {
   const session = sessions[sessionName];
   if (session) {
@@ -35,6 +31,12 @@ function updateLobbyState(sessionName) {
   io.emit('sessionsUpdated', Object.values(sessions));
 }
 
+// Допоміжне: безпечно дістати username із сокета
+function getUsernameFromSocket(socket) {
+  return socket.data?.username || Object.entries(userSockets).find(([, id]) => id === socket.id)?.[0] || null;
+}
+
+// -------------------------
 io.on('connection', (socket) => {
   console.log('🟢 Connected', socket.id);
 
@@ -44,6 +46,8 @@ io.on('connection', (socket) => {
   socket.on('registerUsername', (username) => {
     if (!username) return;
     userSockets[username] = socket.id;
+    socket.data.username = username;
+
     if (!friendRequests[username]) friendRequests[username] = [];
     if (!userFriends[username]) userFriends[username] = [];
 
@@ -83,7 +87,8 @@ io.on('connection', (socket) => {
       maxPlayers: maxPlayers || 8,
       players: [host],
       readyPlayers: [],
-      selectedRoles: {},
+      selectedRoles: {}, 
+      game: null,
     };
 
     userToSession[host] = name;
@@ -99,23 +104,15 @@ io.on('connection', (socket) => {
   // -------------------------
   socket.on('joinSession', ({ sessionName, username, password }) => {
     const session = sessions[sessionName];
-    if (!session) {
-      socket.emit('joinSessionError', 'Session not found');
-      return;
-    }
-    if (session.password && session.password !== password) {
-      socket.emit('joinSessionError', 'Wrong password');
-      return;
-    }
-    if (session.players.length >= session.maxPlayers) {
-      socket.emit('joinSessionError', 'Session full');
-      return;
-    }
+    if (!session) return socket.emit('joinSessionError', 'Session not found');
+    if (session.password && session.password !== password) return socket.emit('joinSessionError', 'Wrong password');
+    if (session.players.length >= session.maxPlayers) return socket.emit('joinSessionError', 'Session full');
 
     if (!session.players.includes(username)) {
       session.players.push(username);
     }
     userToSession[username] = sessionName;
+    socket.data.username = username;
     socket.join(sessionName);
     updateLobbyState(sessionName);
     socket.emit('joinedSession', sessionName);
@@ -131,11 +128,11 @@ io.on('connection', (socket) => {
       socket.emit('lobbyNotFound');
       return;
     }
-
     if (!session.players.includes(username)) {
       session.players.push(username);
     }
     userToSession[username] = sessionName;
+    socket.data.username = username;
     socket.join(sessionName);
     updateLobbyState(sessionName);
     socket.emit('joinedSession', sessionName);
@@ -193,17 +190,114 @@ io.on('connection', (socket) => {
   });
 
   // -------------------------
-  // startGame
+  // ======= ІГРОВА ЛОГІКА =======
   // -------------------------
+
+  function getRoundRoles(session) {
+    const count = session.players.length;
+    const list = [];
+    for (let i = 1; i <= count; i++) {
+      const r = session.selectedRoles?.[i];
+      if (r) list.push(r);
+    }
+    return list;
+  }
+
   socket.on('startGame', ({ sessionName }) => {
     const session = sessions[sessionName];
     if (!session) return;
 
-    io.to(sessionName).emit('gameStarted', {
-      sessionName,
-      players: session.players || [],
+    const rolesForRound = getRoundRoles(session);
+    const players = [...session.players];
+
+    session.game = {
+      phase: 1,
+      availableRoles: rolesForRound,
+      picks: {},
+      order: players,
+      currentIndex: 0,
+      turnNumber: 0,
+    };
+
+    io.to(sessionName).emit('gameStarted', { sessionName, players });
+
+    const payloadPlayers = players.map((u) => ({ id: u, username: u, role: null }));
+    const currentPickerId = session.game.order[session.game.currentIndex];
+
+    io.to(sessionName).emit('startRoleSelection', {
+      availableRoles: [...session.game.availableRoles],
+      players: payloadPlayers,
+      currentPickerId, // 🔥 додано, щоб фронт бачив хто обирає
     });
-    console.log(`🚀 Game started in ${sessionName} with players: ${session.players.join(', ')}`);
+
+    console.log(`🚀 Game started in ${sessionName}. Roles: ${rolesForRound.join(', ')}`);
+  });
+
+  socket.on('getSessionState', ({ sessionName }) => {
+    const session = sessions[sessionName];
+    if (!session) return;
+
+    socket.emit('lobbyStateUpdated', session);
+
+    if (session.game?.phase === 1) {
+      const players = session.players.map((u) => ({
+        id: u,
+        username: u,
+        role: session.game.picks[u] || null,
+      }));
+
+      const currentPickerId = session.game.order[session.game.currentIndex];
+
+      socket.emit('startRoleSelection', {
+        availableRoles: [...session.game.availableRoles],
+        players,
+        currentPickerId, // 🔥 додано
+      });
+
+      socket.emit('rolesSelected', players);
+    }
+
+    if (session.game?.phase >= 2) {
+      socket.emit('startGamePhase', { phase: session.game.phase });
+    }
+  });
+
+  socket.on('pickRole', ({ role }) => {
+    const username = getUsernameFromSocket(socket);
+    if (!username) return;
+
+    const sessionName = userToSession[username];
+    const session = sessions[sessionName];
+    if (!session || !session.game || session.game.phase !== 1) return;
+
+    const { availableRoles, picks, order, currentIndex } = session.game;
+    const currentPicker = order[currentIndex];
+
+    if (username !== currentPicker) return;
+    if (!availableRoles.includes(role)) return;
+
+    picks[username] = role;
+    session.game.availableRoles = availableRoles.filter((r) => r !== role);
+
+    const playersPayload = session.players.map((u) => ({
+      id: u,
+      username: u,
+      role: picks[u] || null,
+    }));
+    io.to(sessionName).emit('rolesSelected', playersPayload);
+
+    if (currentIndex + 1 < order.length) {
+      session.game.currentIndex += 1;
+      const nextPickerId = order[session.game.currentIndex];
+      io.to(sessionName).emit('nextPicker', {
+        currentPickerId: nextPickerId,
+        availableRoles: [...session.game.availableRoles],
+      });
+    } else {
+      session.game.phase = 2;
+      io.to(sessionName).emit('startGamePhase', { phase: 2 });
+      console.log(`🧭 Roles done in ${sessionName}. Picks: ${JSON.stringify(picks)}`);
+    }
   });
 
   // -------------------------

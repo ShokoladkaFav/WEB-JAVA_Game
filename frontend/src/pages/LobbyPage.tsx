@@ -50,11 +50,17 @@ function LobbyPage() {
       navigate('/');
     });
 
-    socket.on('gameStarted', (data: { sessionName: string; players: string[] }) => {
-      if (data.sessionName === sessionName) {
-        navigate(`/game/${data.sessionName}`);
+    // 🔧 Виправлений обробник gameStarted
+    socket.on(
+      'gameStarted',
+      (payload: string | { sessionName: string; players?: string[] }) => {
+        const nextSession =
+          typeof payload === 'string' ? payload : payload.sessionName;
+        if (nextSession === sessionName) {
+          navigate(`/game/${nextSession}`);
+        }
       }
-    });
+    );
 
     return () => {
       socket.off('lobbyStateUpdated');
@@ -118,7 +124,10 @@ function LobbyPage() {
   }
 
   return (
-    <div className="lobby-page" style={{ backgroundImage: `url('/images/lobby-background.jpg')` }}>
+    <div
+      className="lobby-page"
+      style={{ backgroundImage: `url('/images/lobby-background.jpg')` }}
+    >
       <div className="lobby-content">
         <h2>{t('lobby_title', { name: session.name })}</h2>
         <p>{t('host', { host: session.host })}</p>
@@ -146,7 +155,9 @@ function LobbyPage() {
                   <label>Роль {group}: </label>
                   <select
                     value={session.selectedRoles?.[Number(group)] || ''}
-                    onChange={(e) => handleRoleChange(Number(group), e.target.value)}
+                    onChange={(e) =>
+                      handleRoleChange(Number(group), e.target.value)
+                    }
                   >
                     <option value="">—</option>
                     {roles.map((role) => (
@@ -160,12 +171,16 @@ function LobbyPage() {
             <button onClick={startGame} disabled={!everyoneReady}>
               {t('start_game')}
             </button>
-            {!everyoneReady && <p style={{ color: 'gray' }}>{t('not_all_ready')}</p>}
+            {!everyoneReady && (
+              <p style={{ color: 'gray' }}>{t('not_all_ready')}</p>
+            )}
           </>
         ) : (
           <>
             <button onClick={toggleReady}>
-              {session.readyPlayers?.includes(username) ? t('unready') : t('ready')}
+              {session.readyPlayers?.includes(username)
+                ? t('unready')
+                : t('ready')}
             </button>
             <p>{t('waiting_for_host')}</p>
           </>
