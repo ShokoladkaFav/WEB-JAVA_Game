@@ -1,4 +1,4 @@
-// server.js — повний, готовий для вставки
+// server.js — повний, з підтримкою buildDistrict і передачею ходу
 
 const express = require('express');
 const http = require('http');
@@ -16,12 +16,12 @@ const io = new Server(server, {
 // -------------------------
 // Стан сервера в пам'яті
 // -------------------------
-let sessions = {};            // sessionName -> { name, host, password, maxPlayers, players[], readyPlayers[], selectedRoles, game? }
-const userSockets = {};       // username -> socket.id
-const userToSession = {};     // username -> sessionName
-const friendRequests = {};    // username -> [requesters]
-const userFriends = {};       // username -> [friends]
-const disconnectTimers = {};  // username -> timeoutId
+let sessions = {};
+const userSockets = {};
+const userToSession = {};
+const friendRequests = {};
+const userFriends = {};
+const disconnectTimers = {};
 
 function updateLobbyState(sessionName) {
   const session = sessions[sessionName];
@@ -31,9 +31,12 @@ function updateLobbyState(sessionName) {
   io.emit('sessionsUpdated', Object.values(sessions));
 }
 
-// Допоміжне: безпечно дістати username із сокета
 function getUsernameFromSocket(socket) {
-  return socket.data?.username || Object.entries(userSockets).find(([, id]) => id === socket.id)?.[0] || null;
+  return (
+    socket.data?.username ||
+    Object.entries(userSockets).find(([, id]) => id === socket.id)?.[0] ||
+    null
+  );
 }
 
 // -------------------------
@@ -41,7 +44,7 @@ io.on('connection', (socket) => {
   console.log('🟢 Connected', socket.id);
 
   // -------------------------
-  // Реєстрація username
+  // Реєстрація
   // -------------------------
   socket.on('registerUsername', (username) => {
     if (!username) return;
@@ -60,15 +63,12 @@ io.on('connection', (socket) => {
   });
 
   // -------------------------
-  // Повернути всі сесії
+  // Сесії
   // -------------------------
   socket.on('getSessions', () => {
     socket.emit('sessionsUpdated', Object.values(sessions));
   });
 
-  // -------------------------
-  // Створити нову сесію
-  // -------------------------
   socket.on('createSession', (data, callback) => {
     const { name, host, password, maxPlayers } = data || {};
     if (!name || !host) {
@@ -87,7 +87,7 @@ io.on('connection', (socket) => {
       maxPlayers: maxPlayers || 8,
       players: [host],
       readyPlayers: [],
-      selectedRoles: {}, 
+      selectedRoles: {},
       game: null,
     };
 
@@ -99,14 +99,13 @@ io.on('connection', (socket) => {
     console.log(`🎮 Created session: ${name} by ${host}`);
   });
 
-  // -------------------------
-  // Приєднатися до сесії
-  // -------------------------
   socket.on('joinSession', ({ sessionName, username, password }) => {
     const session = sessions[sessionName];
     if (!session) return socket.emit('joinSessionError', 'Session not found');
-    if (session.password && session.password !== password) return socket.emit('joinSessionError', 'Wrong password');
-    if (session.players.length >= session.maxPlayers) return socket.emit('joinSessionError', 'Session full');
+    if (session.password && session.password !== password)
+      return socket.emit('joinSessionError', 'Wrong password');
+    if (session.players.length >= session.maxPlayers)
+      return socket.emit('joinSessionError', 'Session full');
 
     if (!session.players.includes(username)) {
       session.players.push(username);
@@ -119,9 +118,6 @@ io.on('connection', (socket) => {
     console.log(`➕ ${username} joined session ${sessionName}`);
   });
 
-  // -------------------------
-  // Приєднатися до лоббі
-  // -------------------------
   socket.on('joinLobby', ({ sessionName, username }) => {
     const session = sessions[sessionName];
     if (!session) {
@@ -139,15 +135,14 @@ io.on('connection', (socket) => {
     console.log(`💬 ${username} joined lobby ${sessionName}`);
   });
 
-  // -------------------------
-  // Вийти з лоббі
-  // -------------------------
   socket.on('leaveLobby', ({ sessionName, username }) => {
     const session = sessions[sessionName];
     if (!session) return;
 
     session.players = session.players.filter((p) => p !== username);
-    session.readyPlayers = (session.readyPlayers || []).filter((p) => p !== username);
+    session.readyPlayers = (session.readyPlayers || []).filter(
+      (p) => p !== username
+    );
     delete userToSession[username];
     socket.leave(sessionName);
 
@@ -162,9 +157,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // -------------------------
-  // toggleReady
-  // -------------------------
   socket.on('toggleReady', ({ sessionName, username }) => {
     const session = sessions[sessionName];
     if (!session) return;
@@ -178,9 +170,6 @@ io.on('connection', (socket) => {
     console.log(`✅ toggleReady ${username} in ${sessionName}`);
   });
 
-  // -------------------------
-  // updateRoles
-  // -------------------------
   socket.on('updateRoles', ({ sessionName, roles }) => {
     const session = sessions[sessionName];
     if (!session) return;
@@ -190,9 +179,8 @@ io.on('connection', (socket) => {
   });
 
   // -------------------------
-  // ======= ІГРОВА ЛОГІКА =======
+  // ======= ІГРА =======
   // -------------------------
-
   function getRoundRoles(session) {
     const count = session.players.length;
     const list = [];
@@ -217,20 +205,36 @@ io.on('connection', (socket) => {
       order: players,
       currentIndex: 0,
       turnNumber: 0,
+      coins: {},
+      hands: {},
+      built: {}, // 👈 додано для побудованих карт
     };
+
+    players.forEach((p) => {
+      session.game.coins[p] = 2;
+      session.game.hands[p] = [];
+      session.game.built[p] = [];
+    });
 
     io.to(sessionName).emit('gameStarted', { sessionName, players });
 
-    const payloadPlayers = players.map((u) => ({ id: u, username: u, role: null }));
+    const payloadPlayers = players.map((u) => ({
+      id: u,
+      username: u,
+      role: null,
+      coins: 2,
+    }));
     const currentPickerId = session.game.order[session.game.currentIndex];
 
     io.to(sessionName).emit('startRoleSelection', {
       availableRoles: [...session.game.availableRoles],
       players: payloadPlayers,
-      currentPickerId, // 🔥 додано, щоб фронт бачив хто обирає
+      currentPickerId,
     });
 
-    console.log(`🚀 Game started in ${sessionName}. Roles: ${rolesForRound.join(', ')}`);
+    console.log(
+      `🚀 Game started in ${sessionName}. Roles: ${rolesForRound.join(', ')}`
+    );
   });
 
   socket.on('getSessionState', ({ sessionName }) => {
@@ -244,6 +248,7 @@ io.on('connection', (socket) => {
         id: u,
         username: u,
         role: session.game.picks[u] || null,
+        coins: session.game.coins[u] || 2,
       }));
 
       const currentPickerId = session.game.order[session.game.currentIndex];
@@ -251,7 +256,7 @@ io.on('connection', (socket) => {
       socket.emit('startRoleSelection', {
         availableRoles: [...session.game.availableRoles],
         players,
-        currentPickerId, // 🔥 додано
+        currentPickerId,
       });
 
       socket.emit('rolesSelected', players);
@@ -283,6 +288,7 @@ io.on('connection', (socket) => {
       id: u,
       username: u,
       role: picks[u] || null,
+      coins: session.game.coins[u] || 2,
     }));
     io.to(sessionName).emit('rolesSelected', playersPayload);
 
@@ -296,12 +302,152 @@ io.on('connection', (socket) => {
     } else {
       session.game.phase = 2;
       io.to(sessionName).emit('startGamePhase', { phase: 2 });
-      console.log(`🧭 Roles done in ${sessionName}. Picks: ${JSON.stringify(picks)}`);
+      console.log(
+        `🧭 Roles done in ${sessionName}. Picks: ${JSON.stringify(picks)}`
+      );
     }
   });
 
   // -------------------------
-  // removeSession
+  // Вибір карт кварталів
+  // -------------------------
+  function drawCards(count = 2) {
+    const all = ['district1', 'district2', 'district3', 'district4', 'district5'];
+    let result = [];
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(Math.random() * all.length);
+      result.push(all[idx]);
+    }
+    return result;
+  }
+
+  socket.on('requestCards', ({ sessionName }) => {
+    const username = getUsernameFromSocket(socket);
+    if (!username) return;
+    const session = sessions[sessionName];
+    if (!session || !session.game || session.game.phase < 2) return;
+
+    const cards = drawCards(2);
+    io.to(socket.id).emit('offerCards', { cards });
+    console.log(`📜 ${username} отримав пропозицію карт: ${cards.join(', ')}`);
+  });
+
+  socket.on('pickCard', ({ sessionName, card }) => {
+    const username = getUsernameFromSocket(socket);
+    if (!username) return;
+    const session = sessions[sessionName];
+    if (!session || !session.game || session.game.phase < 2) return;
+
+    if (!session.game.hands[username]) session.game.hands[username] = [];
+    session.game.hands[username].push(card);
+
+    console.log(`✅ ${username} обрав карту: ${card}`);
+
+    const playersPayload = session.players.map((u) => ({
+      id: u,
+      username: u,
+      role: session.game.picks[u] || null,
+      coins: session.game.coins[u] || 2,
+      hand: session.game.hands[u] || [],
+      built: session.game.built[u] || [],
+    }));
+
+    io.to(sessionName).emit('cardsUpdated', playersPayload);
+
+    // передати хід наступному
+    if (session.game.order && session.game.currentIndex !== undefined) {
+      session.game.currentIndex =
+        (session.game.currentIndex + 1) % session.game.order.length;
+      const nextPlayer = session.game.order[session.game.currentIndex];
+      io.to(sessionName).emit('nextPicker', { currentPickerId: nextPlayer });
+      console.log(`➡️ Хід переходить до ${nextPlayer}`);
+    }
+  });
+
+  // -------------------------
+  // Взяти монети
+  // -------------------------
+  socket.on('takeCoins', ({ sessionName }) => {
+    const username = getUsernameFromSocket(socket);
+    if (!username) return;
+    const session = sessions[sessionName];
+    if (!session || !session.game || session.game.phase < 2) return;
+
+    session.game.coins[username] = (session.game.coins[username] || 0) + 2;
+
+    console.log(
+      `💰 ${username} взяв 2 монети (загалом ${session.game.coins[username]})`
+    );
+
+    const playersPayload = session.players.map((u) => ({
+      id: u,
+      username: u,
+      role: session.game.picks[u] || null,
+      coins: session.game.coins[u] || 0,
+      hand: session.game.hands[u] || [],
+      built: session.game.built[u] || [],
+    }));
+
+    io.to(sessionName).emit('coinsUpdated', playersPayload);
+
+    // передати хід наступному
+    if (session.game.order && session.game.currentIndex !== undefined) {
+      session.game.currentIndex =
+        (session.game.currentIndex + 1) % session.game.order.length;
+      const nextPlayer = session.game.order[session.game.currentIndex];
+      io.to(sessionName).emit('nextPicker', { currentPickerId: nextPlayer });
+      console.log(`➡️ Хід переходить до ${nextPlayer}`);
+    }
+  });
+
+  // -------------------------
+  // Побудова кварталу
+  // -------------------------
+  socket.on('buildDistrict', ({ sessionName, card }) => {
+    const username = getUsernameFromSocket(socket);
+    if (!username || !card) return;
+    const session = sessions[sessionName];
+    if (!session || !session.game || session.game.phase < 2) return;
+
+    if (!session.game.hands[username]) session.game.hands[username] = [];
+    if (!session.game.built[username]) session.game.built[username] = [];
+
+    // Перевірка чи карта є в руці
+    const idx = session.game.hands[username].indexOf(card);
+    if (idx === -1) return;
+
+    // Будівництво: прибрати карту з руки і перемістити в побудовані
+    session.game.hands[username].splice(idx, 1);
+    session.game.built[username].push(card);
+
+    // Зняти 1 монету
+    session.game.coins[username] = Math.max(0, (session.game.coins[username] || 0) - 1);
+
+    console.log(`🏗 ${username} побудував квартал: ${card}`);
+
+    const playersPayload = session.players.map((u) => ({
+      id: u,
+      username: u,
+      role: session.game.picks[u] || null,
+      coins: session.game.coins[u] || 0,
+      hand: session.game.hands[u] || [],
+      built: session.game.built[u] || [],
+    }));
+
+    io.to(sessionName).emit('cardsUpdated', playersPayload);
+
+    // передати хід наступному
+    if (session.game.order && session.game.currentIndex !== undefined) {
+      session.game.currentIndex =
+        (session.game.currentIndex + 1) % session.game.order.length;
+      const nextPlayer = session.game.order[session.game.currentIndex];
+      io.to(sessionName).emit('nextPicker', { currentPickerId: nextPlayer });
+      console.log(`➡️ Хід переходить до ${nextPlayer}`);
+    }
+  });
+
+  // -------------------------
+  // Адмін-функції
   // -------------------------
   socket.on('removeSession', ({ sessionName, username }) => {
     const session = sessions[sessionName];
@@ -313,15 +459,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  // -------------------------
-  // kickPlayer
-  // -------------------------
   socket.on('kickPlayer', ({ sessionName, playerToKick }) => {
     const session = sessions[sessionName];
     if (!session) return;
 
     session.players = session.players.filter((p) => p !== playerToKick);
-    session.readyPlayers = (session.readyPlayers || []).filter((p) => p !== playerToKick);
+    session.readyPlayers = (session.readyPlayers || []).filter(
+      (p) => p !== playerToKick
+    );
     delete userToSession[playerToKick];
 
     const kickedSocketId = userSockets[playerToKick];
@@ -348,38 +493,66 @@ io.on('connection', (socket) => {
     if (!friendRequests[to].includes(from)) friendRequests[to].push(from);
     const toSocket = userSockets[to];
     if (toSocket) {
-      io.to(toSocket).emit('friendRequestReceived', { requests: friendRequests[to] });
+      io.to(toSocket).emit('friendRequestReceived', {
+        requests: friendRequests[to],
+      });
     }
   });
 
   socket.on('acceptFriendRequest', ({ requester, acceptor }) => {
     userFriends[acceptor] = userFriends[acceptor] || [];
     userFriends[requester] = userFriends[requester] || [];
-    if (!userFriends[acceptor].includes(requester)) userFriends[acceptor].push(requester);
-    if (!userFriends[requester].includes(acceptor)) userFriends[requester].push(acceptor);
-    friendRequests[acceptor] = (friendRequests[acceptor] || []).filter(r => r !== requester);
+    if (!userFriends[acceptor].includes(requester))
+      userFriends[acceptor].push(requester);
+    if (!userFriends[requester].includes(acceptor))
+      userFriends[requester].push(acceptor);
+    friendRequests[acceptor] = (friendRequests[acceptor] || []).filter(
+      (r) => r !== requester
+    );
 
     const accSocket = userSockets[acceptor];
     const reqSocket = userSockets[requester];
-    if (accSocket) io.to(accSocket).emit('friendAdded', { friends: userFriends[acceptor], requests: friendRequests[acceptor] });
-    if (reqSocket) io.to(reqSocket).emit('friendAdded', { friends: userFriends[requester], requests: friendRequests[requester] || [] });
+    if (accSocket)
+      io.to(accSocket).emit('friendAdded', {
+        friends: userFriends[acceptor],
+        requests: friendRequests[acceptor],
+      });
+    if (reqSocket)
+      io.to(reqSocket).emit('friendAdded', {
+        friends: userFriends[requester],
+        requests: friendRequests[requester] || [],
+      });
   });
 
   socket.on('rejectFriendRequest', ({ requester, rejector }) => {
-    friendRequests[rejector] = (friendRequests[rejector] || []).filter((r) => r !== requester);
+    friendRequests[rejector] = (friendRequests[rejector] || []).filter(
+      (r) => r !== requester
+    );
     const rejectorSocket = userSockets[rejector];
     if (rejectorSocket) {
-      io.to(rejectorSocket).emit('friendRequestReceived', { requests: friendRequests[rejector] });
+      io.to(rejectorSocket).emit('friendRequestReceived', {
+        requests: friendRequests[rejector],
+      });
     }
   });
 
   socket.on('removeFriend', ({ user, friendToRemove }) => {
-    userFriends[user] = (userFriends[user] || []).filter((f) => f !== friendToRemove);
-    userFriends[friendToRemove] = (userFriends[friendToRemove] || []).filter((f) => f !== user);
+    userFriends[user] = (userFriends[user] || []).filter(
+      (f) => f !== friendToRemove
+    );
+    userFriends[friendToRemove] = (userFriends[friendToRemove] || []).filter(
+      (f) => f !== user
+    );
     const userSocket = userSockets[user];
     const friendSocket = userSockets[friendToRemove];
-    if (userSocket) io.to(userSocket).emit('friendRemoved', { friends: userFriends[user] });
-    if (friendSocket) io.to(friendSocket).emit('friendRemoved', { friends: userFriends[friendToRemove] });
+    if (userSocket)
+      io.to(userSocket).emit('friendRemoved', {
+        friends: userFriends[user],
+      });
+    if (friendSocket)
+      io.to(friendSocket).emit('friendRemoved', {
+        friends: userFriends[friendToRemove],
+      });
   });
 
   // -------------------------
@@ -403,16 +576,26 @@ io.on('connection', (socket) => {
     if (sessionName && sessions[sessionName]) {
       const session = sessions[sessionName];
       session.players = session.players.filter((p) => p !== username);
-      session.readyPlayers = (session.readyPlayers || []).filter((p) => p !== username);
+      session.readyPlayers = (session.readyPlayers || []).filter(
+        (p) => p !== username
+      );
 
       disconnectTimers[username] = setTimeout(() => {
-        if (session.players.length === 0) {
-          delete sessions[sessionName];
-          io.to(sessionName).emit('lobbyClosed');
-          console.log(`🗑️ Session ${sessionName} deleted after disconnect cleanup`);
-        } else {
-          updateLobbyState(sessionName);
+        if (sessions[sessionName]) {
+          const s = sessions[sessionName];
+          s.players = s.players.filter((p) => p !== username);
+          s.readyPlayers = (s.readyPlayers || []).filter((p) => p !== username);
+
+          if (s.players.length === 0) {
+            delete sessions[sessionName];
+            io.to(sessionName).emit('lobbyClosed');
+            console.log(`🗑️ Session ${sessionName} deleted after disconnect cleanup`);
+          } else {
+            updateLobbyState(sessionName);
+            console.log(`⏳ Cleaned up ${username} from ${sessionName}`);
+          }
         }
+
         io.emit('sessionsUpdated', Object.values(sessions));
         delete userToSession[username];
         delete disconnectTimers[username];
@@ -423,6 +606,9 @@ io.on('connection', (socket) => {
   });
 });
 
+// -------------------------
+// Запуск сервера
+// -------------------------
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🟢 Server running on http://localhost:${PORT}`);

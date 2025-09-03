@@ -8,39 +8,49 @@ type Player = {
   username: string;
   role: string | null;
   avatar?: string | null;
+  coins?: number;
+  hand?: string[];
+  built?: string[]; // 👈 нове поле: побудовані квартали
 };
 
 const GameBoard = () => {
   const { sessionName } = useParams();
   const myUsername = useMemo(() => sessionStorage.getItem('username') || '', []);
+
+  // загальні стани
   const [players, setPlayers] = useState<Player[]>([]);
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [myId, setMyId] = useState<string | undefined>(undefined);
   const [currentPickerId, setCurrentPickerId] = useState<string>('');
   const [phase, setPhase] = useState<number>(1);
 
-  // 🎴 демо-стани
-  const [myHand, setMyHand] = useState<string[]>(['district1', 'district2']);
+  // локальні стани гравця
+  const [myHand, setMyHand] = useState<string[]>([]);
   const [builtDistricts, setBuiltDistricts] = useState<string[]>([]);
   const [coins, setCoins] = useState<number>(2);
   const [myRole, setMyRole] = useState<string>('Невідомо');
   const [roleDescription, setRoleDescription] = useState<string>(
     'Виберіть роль, щоб побачити її опис'
   );
+  const [showHand, setShowHand] = useState(false);
+  const [cardChoices, setCardChoices] = useState<string[]>([]);
+  const [buttonsDisabled, setButtonsDisabled] = useState(false);
+  const [showBuildOverlay, setShowBuildOverlay] = useState(false);
 
-  // 🛠 мапер від сирих даних до Player
+  // мапер даних від сервера в Player[]
   const mapPlayers = (arr: any[]): Player[] =>
     (arr || [])
       .map((u: any): Player | null => {
         if (!u) return null;
-        const id = u.id ?? u.socketId ?? u.sid ?? u.username;
-        const username = u.username ?? u.name ?? '';
-
+        const id = u.id ?? u.username;
+        const username = u.username ?? '';
         if (!id && !username) return null;
-
         const role = u.role ?? null;
         const avatar = localStorage.getItem(`profileImage_${username}`) || null;
-        return { id, username, role, avatar };
+        const coins = u.coins ?? (u.coins === 0 ? 0 : 2);
+        const hand = u.hand ?? [];
+        const built = u.built ?? [];
+        return { id, username, role, avatar, coins, hand, built };
       })
       .filter((p): p is Player => p !== null);
 
@@ -49,16 +59,16 @@ const GameBoard = () => {
       const merged = [...prev];
       updated.forEach(u => {
         const idx = merged.findIndex(p => p.username === u.username || p.id === u.id);
-        if (idx !== -1) {
-          merged[idx] = { ...merged[idx], ...u };
-        } else {
-          merged.push(u);
-        }
+        if (idx !== -1) merged[idx] = { ...merged[idx], ...u };
+        else merged.push(u);
       });
-      return merged.filter(p => (p.id && p.id.trim()) || (p.username && p.username.trim()));
+      return merged.filter(
+        p => (p.id && p.id.toString().trim()) || (p.username && p.username.trim())
+      );
     });
   };
 
+  // Підключення socket listeners
   useEffect(() => {
     const onConnect = () => setMyId(socket.id);
 
@@ -78,29 +88,24 @@ const GameBoard = () => {
     };
 
     const onStartRoleSelection = (payload: any) => {
-      const roles: string[] = payload?.availableRoles ?? payload?.roles ?? [];
+      const roles: string[] = payload?.availableRoles ?? [];
       const rawPlayers: any[] = payload?.players ?? [];
       mergePlayers(mapPlayers(rawPlayers));
       setAvailableRoles(roles);
       setPhase(1);
-
       const rawPicker = payload?.currentPickerId ?? payload?.currentPicker ?? '';
       setCurrentPickerId(rawPicker);
     };
 
     const onNextPicker = (payload: any) => {
-      const roles: string[] = payload?.availableRoles ?? payload?.roles ?? [];
-      setAvailableRoles(roles);
-
+      const roles: string[] = payload?.availableRoles ?? [];
+      if (roles && roles.length > 0) setAvailableRoles(roles);
       const rawPicker = payload?.currentPickerId ?? payload?.currentPicker ?? '';
-      if (rawPicker) {
-        setCurrentPickerId(rawPicker);
-      }
+      if (rawPicker) setCurrentPickerId(rawPicker);
     };
 
     const onRolesSelected = (updated: any[]) => {
       mergePlayers(mapPlayers(updated));
-
       const me = updated.find(u => u.username === myUsername || u.id === myId);
       if (me?.role) {
         setMyRole(me.role);
@@ -108,7 +113,32 @@ const GameBoard = () => {
       }
     };
 
-    const onStartGamePhase = ({ phase }: { phase: number }) => setPhase(phase);
+    const onStartGamePhase = ({ phase }: { phase: number }) => {
+      setPhase(phase);
+    };
+
+    const onOfferCards = ({ cards }: { cards: string[] }) => {
+      setCardChoices(cards || []);
+      setButtonsDisabled(true);
+    };
+
+    const onCardsUpdated = (updated: any[]) => {
+      mergePlayers(mapPlayers(updated));
+      const me = updated.find(u => u.username === myUsername || u.id === myId);
+      if (me?.hand) setMyHand(me.hand);
+      if (me?.built) setBuiltDistricts(me.built);
+      if (me?.coins !== undefined) setCoins(me.coins);
+      setButtonsDisabled(false);
+      setCardChoices([]);
+      setShowBuildOverlay(false);
+    };
+
+    const onCoinsUpdated = (updated: any[]) => {
+      mergePlayers(mapPlayers(updated));
+      const me = updated.find(u => u.username === myUsername || u.id === myId);
+      if (me?.coins !== undefined) setCoins(me.coins);
+      setButtonsDisabled(false);
+    };
 
     socket.on('connect', onConnect);
     socket.on('lobbyStateUpdated', onLobbyStateUpdated);
@@ -116,6 +146,9 @@ const GameBoard = () => {
     socket.on('nextPicker', onNextPicker);
     socket.on('rolesSelected', onRolesSelected);
     socket.on('startGamePhase', onStartGamePhase);
+    socket.on('offerCards', onOfferCards);
+    socket.on('cardsUpdated', onCardsUpdated);
+    socket.on('coinsUpdated', onCoinsUpdated);
 
     return () => {
       socket.off('connect', onConnect);
@@ -124,6 +157,9 @@ const GameBoard = () => {
       socket.off('nextPicker', onNextPicker);
       socket.off('rolesSelected', onRolesSelected);
       socket.off('startGamePhase', onStartGamePhase);
+      socket.off('offerCards', onOfferCards);
+      socket.off('cardsUpdated', onCardsUpdated);
+      socket.off('coinsUpdated', onCoinsUpdated);
     };
   }, [sessionName, myUsername, myId]);
 
@@ -135,21 +171,34 @@ const GameBoard = () => {
     return picker ? picker.id === myId || picker.username === myUsername : false;
   }, [currentPickerId, myId, myUsername, players]);
 
-  const handlePickRole = (role: string) => {
-    if (!amIPicker) return;
-    socket.emit('pickRole', { sessionName, role });
-    setAvailableRoles([]); // Закриваємо overlay
+  // Дії гравця
+  const takeCoins = () => {
+    if (!sessionName || buttonsDisabled) return;
+    setButtonsDisabled(true);
+    socket.emit('takeCoins', { sessionName });
+  };
+
+  const requestCards = () => {
+    if (!sessionName || buttonsDisabled) return;
+    setButtonsDisabled(true);
+    socket.emit('requestCards', { sessionName });
+  };
+
+  const pickCard = (card: string) => {
+    if (!sessionName) return;
+    socket.emit('pickCard', { sessionName, card });
+    setCardChoices([]);
   };
 
   const buildDistrict = (card: string) => {
-    setMyHand(prev => prev.filter(c => c !== card));
-    setBuiltDistricts(prev => [...prev, card]);
-    setCoins(prev => Math.max(0, prev - 1));
+    if (!sessionName) return;
+    setButtonsDisabled(true);
+    socket.emit('buildDistrict', { sessionName, card });
   };
 
   return (
     <div className="game-board">
-      {/* 📌 Список гравців */}
+      {/* Список гравців */}
       <div className="player-list-overlay">
         <strong>Гравці:</strong>
         <ul>
@@ -158,24 +207,36 @@ const GameBoard = () => {
           ) : (
             players.map(p => (
               <li key={`${p.id}-${p.username}`}>
-                {p.username}{' '}
-                {p.role && (
-                  <>
-                    — {p.role}{' '}
-                    <img
-                      src={`/ROLE_kard/${p.role}.png`}
-                      alt={p.role}
-                      className="small-role-card"
-                    />
-                  </>
-                )}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ marginRight: 8 }}>
+                    {p.username} {p.role && <>— {p.role}</>}
+                  </span>
+                  {typeof p.coins === 'number' && (
+                    <span className="player-coins" title={`${p.username} монети`}>
+                      <img src="/icons/coin.png" alt="Coin" className="coin-icon-small" />
+                      {p.coins}
+                    </span>
+                  )}
+                  {p.built && p.built.length > 0 && (
+                    <div className="player-built-list">
+                      {p.built.map((card, i) => (
+                        <img
+                          key={`${p.username}-built-${i}`}
+                          src={`/districts/${card}.png`}
+                          alt={card}
+                          className="built-card-small"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </li>
             ))
           )}
         </ul>
       </div>
 
-      {/* 🔄 Коло гравців */}
+      {/* Коло гравців */}
       <div className="circle-container">
         {players.map((p, index) => {
           const angle = players.length ? (index / players.length) * 2 * Math.PI : 0;
@@ -193,19 +254,9 @@ const GameBoard = () => {
               {p.avatar ? (
                 <img src={p.avatar} alt={p.username} />
               ) : (
-                <div className="avatar-placeholder">
-                  {p.username.charAt(0).toUpperCase()}
-                </div>
+                <div className="avatar-placeholder">{p.username.charAt(0).toUpperCase()}</div>
               )}
-              <span className="player-name">
-                {p.username}
-                {p.role && (
-                  <div className="role-info">
-                    <img src={`/ROLE_kard/${p.role}.png`} alt={p.role} className="role-card" />
-                    <span>{p.role}</span>
-                  </div>
-                )}
-              </span>
+              <span className="player-name">{p.username}</span>
             </div>
           );
         })}
@@ -214,7 +265,7 @@ const GameBoard = () => {
       <h1 className="game-title">🎮 Гра: {sessionName}</h1>
       <h2 className="game-phase">Фаза: {phase === 1 ? 'Вибір ролей' : 'Гра у процесі'}</h2>
 
-      {/* 🃏 Overlay вибору ролей */}
+      {/* Overlay вибору ролей */}
       {phase === 1 && amIPicker && availableRoles.length > 0 && (
         <div className="overlay">
           <div className="overlay-content">
@@ -223,7 +274,10 @@ const GameBoard = () => {
               {availableRoles.map(role => (
                 <button
                   key={role}
-                  onClick={() => handlePickRole(role)}
+                  onClick={() => {
+                    socket.emit('pickRole', { sessionName, role });
+                    setAvailableRoles([]);
+                  }}
                   className="role-card-button"
                 >
                   <img src={`/ROLE_kard/${role}.png`} alt={role} className="role-card" />
@@ -247,20 +301,104 @@ const GameBoard = () => {
         </p>
       )}
 
-      {/* 🔴 Рука карт */}
-      <div className="hand-cards">
-        {myHand.map((card, i) => (
-          <img
-            key={`${card}-${i}`}
-            src={`/districts/${card}.png`}
-            alt={card}
-            className="card-hand"
-            onClick={() => buildDistrict(card)}
-          />
-        ))}
-      </div>
+      {/* Панель дій */}
+      {phase !== 1 && amIPicker && (
+        <div className="actions-panel">
+          <button onClick={takeCoins} disabled={buttonsDisabled}>
+            💰 Взяти 2 монети
+          </button>
+          <button onClick={requestCards} disabled={buttonsDisabled}>
+            📜 Взяти креслення кварталу
+          </button>
+          <button
+            onClick={() => setShowBuildOverlay(true)}
+            disabled={buttonsDisabled || myHand.length === 0}
+          >
+            🏗 Побудувати квартал
+          </button>
+        </div>
+      )}
 
-      {/* 🔵 Побудовані квартали */}
+      {/* Overlay вибору карти для побудови */}
+      {showBuildOverlay && (
+        <div className="overlay">
+          <div className="overlay-content">
+            <h3 style={{ color: 'gold' }}>Оберіть карту у вашій руці для побудови</h3>
+            <p>Клацніть по карті, щоб побудувати її.</p>
+            <div
+              className="card-choice-grid"
+              style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              {myHand.map((card, i) => (
+                <img
+                  key={`${card}-${i}`}
+                  src={`/districts/${card}.png`}
+                  alt={card}
+                  className="card-choice"
+                  style={{ width: 120, height: 170, cursor: 'pointer' }}
+                  onClick={() => buildDistrict(card)}
+                />
+              ))}
+            </div>
+            <button onClick={() => setShowBuildOverlay(false)}>Скасувати</button>
+          </div>
+        </div>
+      )}
+
+      {/* Вибір карт */}
+      {cardChoices.length > 0 && (
+        <div className="overlay">
+          <div className="overlay-content">
+            <h3>Оберіть карту:</h3>
+            <div
+              className="card-choice-grid"
+              style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              {cardChoices.map((card, i) => (
+                <img
+                  key={`${card}-${i}`}
+                  src={`/districts/${card}.png`}
+                  alt={card}
+                  className="card-choice"
+                  style={{ width: 120, height: 170, cursor: 'pointer' }}
+                  onClick={() => pickCard(card)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Рука гравця */}
+      {showHand && (
+        <div className="hand-cards">
+          {myHand.length === 0 ? (
+            <div style={{ color: 'white' }}>Рука порожня</div>
+          ) : (
+            myHand.map((card, i) => (
+              <img
+                key={`${card}-${i}`}
+                src={`/districts/${card}.png`}
+                alt={card}
+                className="card-hand"
+                onClick={() => buildDistrict(card)}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Мої побудовані квартали */}
       <div className="built-districts">
         {builtDistricts.length ? (
           builtDistricts.map((card, i) => (
@@ -271,16 +409,21 @@ const GameBoard = () => {
         )}
       </div>
 
-      {/* 🟡 Монети */}
+      {/* Монети */}
       <div className="coins">
         <img src="/icons/coin.png" alt="Coin" className="coin-icon" />
         <span className="coin-count">{coins}</span>
       </div>
 
-      {/* ⚫ Інфо про роль */}
+      {/* Інфо про роль */}
       <div className="role-info-box">
         <h3>{myRole}</h3>
         <p>{roleDescription}</p>
+      </div>
+
+      {/* Кнопка toggle руки */}
+      <div className="hand-toggle" onClick={() => setShowHand(prev => !prev)}>
+        <img src="/icons/arrow-down.png" alt="Toggle hand" />
       </div>
     </div>
   );
