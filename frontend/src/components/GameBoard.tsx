@@ -10,21 +10,19 @@ type Player = {
   avatar?: string | null;
   coins?: number;
   hand?: string[];
-  built?: string[]; // 👈 нове поле: побудовані квартали
+  built?: string[];
 };
 
 const GameBoard = () => {
   const { sessionName } = useParams();
   const myUsername = useMemo(() => sessionStorage.getItem('username') || '', []);
 
-  // загальні стани
   const [players, setPlayers] = useState<Player[]>([]);
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [myId, setMyId] = useState<string | undefined>(undefined);
   const [currentPickerId, setCurrentPickerId] = useState<string>('');
   const [phase, setPhase] = useState<number>(1);
 
-  // локальні стани гравця
   const [myHand, setMyHand] = useState<string[]>([]);
   const [builtDistricts, setBuiltDistricts] = useState<string[]>([]);
   const [coins, setCoins] = useState<number>(2);
@@ -37,7 +35,6 @@ const GameBoard = () => {
   const [buttonsDisabled, setButtonsDisabled] = useState(false);
   const [showBuildOverlay, setShowBuildOverlay] = useState(false);
 
-  // мапер даних від сервера в Player[]
   const mapPlayers = (arr: any[]): Player[] =>
     (arr || [])
       .map((u: any): Player | null => {
@@ -68,7 +65,6 @@ const GameBoard = () => {
     });
   };
 
-  // Підключення socket listeners
   useEffect(() => {
     const onConnect = () => setMyId(socket.id);
 
@@ -171,7 +167,6 @@ const GameBoard = () => {
     return picker ? picker.id === myId || picker.username === myUsername : false;
   }, [currentPickerId, myId, myUsername, players]);
 
-  // Дії гравця
   const takeCoins = () => {
     if (!sessionName || buttonsDisabled) return;
     setButtonsDisabled(true);
@@ -196,6 +191,16 @@ const GameBoard = () => {
     socket.emit('buildDistrict', { sessionName, card });
   };
 
+  const isActivePlayer = (p: Player) =>
+    !!currentPickerId && (p.id === currentPickerId || p.username === currentPickerId);
+
+  const currentTurnName = useMemo(() => {
+    const picker =
+      players.find(p => p.id === currentPickerId) ||
+      players.find(p => p.username === currentPickerId);
+    return picker?.username || '';
+  }, [players, currentPickerId]);
+
   return (
     <div className="game-board">
       {/* Список гравців */}
@@ -205,20 +210,31 @@ const GameBoard = () => {
           {players.length === 0 ? (
             <li>Очікуємо гравців…</li>
           ) : (
-            players.map(p => (
-              <li key={`${p.id}-${p.username}`}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ marginRight: 8 }}>
-                    {p.username} {p.role && <>— {p.role}</>}
-                  </span>
-                  {typeof p.coins === 'number' && (
-                    <span className="player-coins" title={`${p.username} монети`}>
-                      <img src="/icons/coin.png" alt="Coin" className="coin-icon-small" />
-                      {p.coins}
-                    </span>
-                  )}
+            players.map(p => {
+              const active = isActivePlayer(p);
+              return (
+                <li key={`${p.id}-${p.username}`} className={active ? 'active-player' : ''}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <img
+                      src={p.avatar || '/icons/default-avatar.png'}
+                      alt={p.username}
+                      className="small-avatar"
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span>
+                        {p.username} {p.role && <>— {p.role}</>}
+                      </span>
+                      {typeof p.coins === 'number' && (
+                        <span className="player-coins" title={`${p.username} монети`}>
+                          <img src="/icons/coin.png" alt="Coin" className="coin-icon-small" />
+                          {p.coins}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
                   {p.built && p.built.length > 0 && (
-                    <div className="player-built-list">
+                    <div className="player-built-list" style={{ marginTop: 6 }}>
                       {p.built.map((card, i) => (
                         <img
                           key={`${p.username}-built-${i}`}
@@ -229,33 +245,36 @@ const GameBoard = () => {
                       ))}
                     </div>
                   )}
-                </div>
-              </li>
-            ))
+                </li>
+              );
+            })
           )}
         </ul>
       </div>
 
-      {/* Коло гравців */}
-      <div className="circle-container">
+      {/* Коло гравців на полі */}
+      <div className="circle-container" aria-hidden>
         {players.map((p, index) => {
           const angle = players.length ? (index / players.length) * 2 * Math.PI : 0;
           const x = 200 * Math.cos(angle);
           const y = 200 * Math.sin(angle);
+          const active = isActivePlayer(p);
+
           return (
             <div
               key={`${p.id}-${index}`}
               className="player-avatar"
-              style={{
-                transform: `translate(${x}px, ${y}px)`,
-                border: myId === p.id ? '3px solid gold' : 'none',
-              }}
+              style={{ transform: `translate(${x}px, ${y}px)` }}
+              title={p.username}
             >
-              {p.avatar ? (
-                <img src={p.avatar} alt={p.username} />
-              ) : (
-                <div className="avatar-placeholder">{p.username.charAt(0).toUpperCase()}</div>
-              )}
+              <div style={{ position: 'relative' }}>
+                {p.avatar ? (
+                  <img src={p.avatar} alt={p.username} />
+                ) : (
+                  <div className="avatar-placeholder">{p.username.charAt(0).toUpperCase()}</div>
+                )}
+                {active && <span className="turn-icon" aria-hidden>⏳</span>}
+              </div>
               <span className="player-name">{p.username}</span>
             </div>
           );
@@ -263,9 +282,13 @@ const GameBoard = () => {
       </div>
 
       <h1 className="game-title">🎮 Гра: {sessionName}</h1>
-      <h2 className="game-phase">Фаза: {phase === 1 ? 'Вибір ролей' : 'Гра у процесі'}</h2>
 
-      {/* Overlay вибору ролей */}
+      <div className="game-phase">
+        <div>Фаза: {phase === 1 ? 'Вибір ролей' : 'Гра у процесі'}</div>
+        {currentTurnName && <div style={{ marginTop: 6 }}>Хід: <strong>{currentTurnName}</strong></div>}
+      </div>
+
+      {/* Вибір ролей */}
       {phase === 1 && amIPicker && availableRoles.length > 0 && (
         <div className="overlay">
           <div className="overlay-content">
@@ -290,7 +313,7 @@ const GameBoard = () => {
       )}
 
       {phase === 1 && !amIPicker && (
-        <p className="waiting-text">
+        <p className="waiting-text" style={{ color: 'white', textAlign: 'center' }}>
           Очікування вибору ролі гравцем:{' '}
           {(() => {
             const picker =
@@ -304,12 +327,8 @@ const GameBoard = () => {
       {/* Панель дій */}
       {phase !== 1 && amIPicker && (
         <div className="actions-panel">
-          <button onClick={takeCoins} disabled={buttonsDisabled}>
-            💰 Взяти 2 монети
-          </button>
-          <button onClick={requestCards} disabled={buttonsDisabled}>
-            📜 Взяти креслення кварталу
-          </button>
+          <button onClick={takeCoins} disabled={buttonsDisabled}>💰 Взяти 2 монети</button>
+          <button onClick={requestCards} disabled={buttonsDisabled}>📜 Взяти креслення кварталу</button>
           <button
             onClick={() => setShowBuildOverlay(true)}
             disabled={buttonsDisabled || myHand.length === 0}
@@ -319,21 +338,13 @@ const GameBoard = () => {
         </div>
       )}
 
-      {/* Overlay вибору карти для побудови */}
+      {/* Overlay для побудови кварталу */}
       {showBuildOverlay && (
-        <div className="overlay">
-          <div className="overlay-content">
+        <div className="overlay" onClick={() => setShowBuildOverlay(false)}>
+          <div className="overlay-content" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ color: 'gold' }}>Оберіть карту у вашій руці для побудови</h3>
             <p>Клацніть по карті, щоб побудувати її.</p>
-            <div
-              className="card-choice-grid"
-              style={{
-                display: 'flex',
-                gap: 12,
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
+            <div className="card-choice-grid" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               {myHand.map((card, i) => (
                 <img
                   key={`${card}-${i}`}
@@ -350,20 +361,12 @@ const GameBoard = () => {
         </div>
       )}
 
-      {/* Вибір карт */}
+      {/* Вибір карт (offerCards) */}
       {cardChoices.length > 0 && (
-        <div className="overlay">
-          <div className="overlay-content">
+        <div className="overlay" onClick={() => setCardChoices([])}>
+          <div className="overlay-content" onClick={(e) => e.stopPropagation()}>
             <h3>Оберіть карту:</h3>
-            <div
-              className="card-choice-grid"
-              style={{
-                display: 'flex',
-                gap: 12,
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
+            <div className="card-choice-grid" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               {cardChoices.map((card, i) => (
                 <img
                   key={`${card}-${i}`}
@@ -379,26 +382,7 @@ const GameBoard = () => {
         </div>
       )}
 
-      {/* Рука гравця */}
-      {showHand && (
-        <div className="hand-cards">
-          {myHand.length === 0 ? (
-            <div style={{ color: 'white' }}>Рука порожня</div>
-          ) : (
-            myHand.map((card, i) => (
-              <img
-                key={`${card}-${i}`}
-                src={`/districts/${card}.png`}
-                alt={card}
-                className="card-hand"
-                onClick={() => buildDistrict(card)}
-              />
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Мої побудовані квартали */}
+      {/* Побудовані квартали власного гравця */}
       <div className="built-districts">
         {builtDistricts.length ? (
           builtDistricts.map((card, i) => (
@@ -422,9 +406,52 @@ const GameBoard = () => {
       </div>
 
       {/* Кнопка toggle руки */}
-      <div className="hand-toggle" onClick={() => setShowHand(prev => !prev)}>
-        <img src="/icons/arrow-down.png" alt="Toggle hand" />
+      <div className="hand-toggle" onClick={() => setShowHand(true)}>
+        <img
+          src="/icons/arrow-down.png"
+          alt="Показати руку"
+          style={{ width: 40, height: 40, cursor: 'pointer' }}
+        />
       </div>
+
+      {/* Віконце з рукою */}
+      {showHand && (
+        <div className="overlay" onClick={() => setShowHand(false)}>
+          <div
+            className="overlay-content"
+            style={{ background: '#222', borderRadius: 12, padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ color: 'gold' }}>Ваша рука</h3>
+            {myHand.length === 0 ? (
+              <p style={{ color: 'white' }}>Рука порожня</p>
+            ) : (
+              <div
+                className="hand-cards-grid"
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                  gap: 12,
+                }}
+              >
+                {myHand.map((card, i) => (
+                  <img
+                    key={`${card}-${i}`}
+                    src={`/districts/${card}.png`}
+                    alt={card}
+                    className="card-hand"
+                    style={{ width: 120, height: 170 }}
+                  />
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
+              <button onClick={() => setShowHand(false)}>Закрити</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

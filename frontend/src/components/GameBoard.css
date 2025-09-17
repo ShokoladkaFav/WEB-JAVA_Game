@@ -275,7 +275,7 @@
   bottom: 70px;
   left: 50%;
   transform: translateX(-50%);
-  display: none; /* ❌ ховаємо завжди */
+  display: none;
   gap: 12px;
   padding: 12px 16px;
   background: rgba(0, 0, 0, 0.7);
@@ -285,7 +285,7 @@
 }
 
 .hand-toggle:hover + .hand-cards {
-  display: flex; /* ✅ показуємо тільки при hover */
+  display: flex;
 }
 
 .card-hand {
@@ -365,5 +365,73 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* ============================
+   Активний гравець (тільки в списку "Гравці:")
+   ============================ */
+.player-list-overlay li.active-player {
+  background: rgba(255, 215, 0, 0.15);
+  border-left: 4px solid gold;
+  padding-left: 6px;
+  border-radius: 6px;
+  transition: background 0.25s ease, transform 0.12s ease;
+}
+
+.player-list-overlay li.active-player .player-name,
+.player-list-overlay li.active-player span {
+  color: gold;
+  font-weight: 700;
+}
+
+.player-list-overlay li.active-player .small-avatar {
+  border: 2px solid gold;
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.85);
+}
+
+/* Контейнер для позиціонування іконки */
+.player-list-overlay li > div:first-child {
+  position: relative;
+}
+
+/* Іконка ходу ⏳ */
+.turn-icon {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  font-size: 18px;
+  color: gold;
+  text-shadow: 0 0 6px rgba(0,0,0,0.6), 0 0 8px rgba(255,215,0,0.8);
+  pointer-events: none;
+  animation: turnPulse 1.3s infinite;
+  background: rgba(0,0,0,0.25);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+@keyframes turnPulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.12); opacity: 0.85; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Мобільна адаптація */
+@media (max-width: 600px) {
+  .player-list-overlay {
+    top: 80px;
+    left: 6px;
+    padding: 8px;
+    max-width: 180px;
+    font-size: 13px;
+  }
+  .small-avatar {
+    width: 22px;
+    height: 22px;
+  }
+  .turn-icon {
+    font-size: 16px;
+    top: -8px;
+    right: -8px;
   }
 }

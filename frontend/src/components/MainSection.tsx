@@ -1,16 +1,18 @@
 import './MainSection.css'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom' // ✅ додали
 import SessionModal from './SessionModal'
 
 function MainSection() {
   const { t } = useTranslation()
   const [showSessions, setShowSessions] = useState(false)
   const isLoggedIn = !!sessionStorage.getItem('username')
+  const navigate = useNavigate() // ✅ ініціалізуємо
 
   const handleClick = () => {
     if (!isLoggedIn) {
-      alert(t('login_required'))
+      navigate('/register') // ✅ редірект замість alert
     } else {
       setShowSessions(true)
     }

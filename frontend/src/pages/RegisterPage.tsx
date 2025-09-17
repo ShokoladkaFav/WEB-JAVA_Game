@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom'; // ✅ додаємо
 import './RegisterPage.css';
 
 const RegisterPage: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate(); // ✅ хук для переходу
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,8 +20,8 @@ const RegisterPage: React.FC = () => {
     try {
       const response = await fetch('http://kursachgame.atwebpages.com/register.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ username, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
       });
 
       const data = await response.json();
@@ -26,7 +29,13 @@ const RegisterPage: React.FC = () => {
       if (data.success) {
         setMessage(t('register_success'));
         setUsername('');
+        setEmail('');
         setPassword('');
+
+        // ⏳ невелика затримка перед переходом (щоб показати повідомлення)
+        setTimeout(() => {
+          navigate('/'); // ✅ переходимо на головну
+        }, 1000);
       } else {
         setMessage(data.message || t('register_failed'));
       }
@@ -48,6 +57,13 @@ const RegisterPage: React.FC = () => {
             placeholder={t('username')}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+          <input
+            type="email"
+            placeholder={t('email')}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
           <input
