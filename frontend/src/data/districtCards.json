@@ -1,34 +1,39 @@
 {
   "districts": [
     {
+      "id": "district1",
       "name": "Арсенал",
       "category": "Військовий",
       "cost": 3,
-      "image": "districts/Військовий/Арсенал.png"
+      "image": "/districts/Військовий/Арсенал.png"
     },
     {
+      "id": "district2",
       "name": "Будівля інженерів",
       "category": "Військовий",
       "cost": 2,
-      "image": "districts/Військовий/Будівля інженерів.png"
+      "image": "/districts/Військовий/Будівля інженерів.png"
     },
     {
+      "id": "district3",
       "name": "Казарми",
       "category": "Військовий",
       "cost": 2,
-      "image": "districts/Військовий/Казарми.png"
+      "image": "/districts/Військовий/Казарми.png"
     },
     {
+      "id": "district4",
       "name": "Конюшня",
       "category": "Військовий",
       "cost": 4,
-      "image": "districts/Військовий/Конюшня.png"
+      "image": "/districts/Військовий/Конюшня.png"
     },
     {
+      "id": "district5",
       "name": "Посольство",
       "category": "Військовий",
       "cost": 7,
-      "image": "districts/Військовий/Посольство.png"
+      "image": "/districts/Військовий/Посольство.png"
     },
     {
       "name": "Сторожова вежа",
