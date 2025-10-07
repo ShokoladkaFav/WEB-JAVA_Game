@@ -4,6 +4,15 @@ import socket from '../sockets/socket';
 import './GameBoard.css';
 import districtsData from '../data/districtCards.json';
 
+// 🧩 Компоненти
+import PlayerList from '../components/game/PlayerList';
+import PlayerCircle from '../components/game/PlayerCircle';
+import RoleSelectOverlay from '../components/game/RoleSelectOverlay';
+import BuildOverlay from '../components/game/BuildOverlay';
+import CardChoiceOverlay from '../components/game/CardChoiceOverlay';
+import HandOverlay from '../components/game/HandOverlay';
+
+// 🧰 Типи
 type Player = {
   id: string;
   username: string;
@@ -29,52 +38,20 @@ interface DistrictCardsFile {
 
 const data = districtsData as DistrictCardsFile;
 
-// ✅ Пошук картки по ID
-const getCardInfo = (cardId: string): DistrictCard | undefined =>
+// 🔍 Пошук картки
+export const getCardInfo = (cardId: string): DistrictCard | undefined =>
   data.districts.find((c: DistrictCard) => c.id === cardId);
-
-// ✅ Рендер картки
-const renderCard = (
-  card: string,
-  i: number,
-  onClick?: () => void,
-  small = false
-) => {
-  const info = getCardInfo(card);
-  return (
-    <div
-      key={`${card}-${i}`}
-      className={`district-card ${small ? 'district-card-small' : ''}`}
-      onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
-    >
-      <img
-        src={info?.image || `/districts/${card}.png`}
-        alt={info?.name || card}
-      />
-      <div className="card-info">
-        <strong>{info?.name || card}</strong>
-        <p>Категорія: {info?.category || '—'}</p>
-        <p>💰 {info?.cost ?? '?'}</p>
-        {info?.effect && <em>{info.effect}</em>}
-      </div>
-    </div>
-  );
-};
 
 const GameBoard = () => {
   const { sessionName } = useParams();
-  const myUsername = useMemo(
-    () => sessionStorage.getItem('username') || '',
-    []
-  );
+  const myUsername = useMemo(() => sessionStorage.getItem('username') || '', []);
 
+  // 📊 Стан
   const [players, setPlayers] = useState<Player[]>([]);
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
-  const [myId, setMyId] = useState<string | undefined>(undefined);
+  const [myId, setMyId] = useState<string>();
   const [currentPickerId, setCurrentPickerId] = useState<string>('');
   const [phase, setPhase] = useState<number>(1);
-
   const [myHand, setMyHand] = useState<string[]>([]);
   const [builtDistricts, setBuiltDistricts] = useState<string[]>([]);
   const [coins, setCoins] = useState<number>(2);
@@ -87,7 +64,7 @@ const GameBoard = () => {
   const [buttonsDisabled, setButtonsDisabled] = useState(false);
   const [showBuildOverlay, setShowBuildOverlay] = useState(false);
 
-  // 🔄 Маппінг гравців
+  // 🧩 Маппінг гравців
   const mapPlayers = (arr: any[]): Player[] =>
     (arr || [])
       .map((u: any): Player | null => {
@@ -96,8 +73,7 @@ const GameBoard = () => {
         const username = u.username ?? '';
         if (!id && !username) return null;
         const role = u.role ?? null;
-        const avatar =
-          localStorage.getItem(`profileImage_${username}`) || null;
+        const avatar = localStorage.getItem(`profileImage_${username}`) || null;
         const coins = u.coins ?? (u.coins === 0 ? 0 : 2);
         const hand = u.hand ?? [];
         const built = u.built ?? [];
@@ -123,7 +99,7 @@ const GameBoard = () => {
     });
   };
 
-  // 🔄 Сокети
+  // 🔌 Сокети
   useEffect(() => {
     const onConnect = () => setMyId(socket.id);
 
@@ -148,17 +124,16 @@ const GameBoard = () => {
       mergePlayers(mapPlayers(rawPlayers));
       setAvailableRoles(roles);
       setPhase(1);
-      const rawPicker =
-        payload?.currentPickerId ?? payload?.currentPicker ?? '';
-      setCurrentPickerId(rawPicker);
+      setCurrentPickerId(
+        payload?.currentPickerId ?? payload?.currentPicker ?? ''
+      );
     };
 
     const onNextPicker = (payload: any) => {
-      const roles: string[] = payload?.availableRoles ?? [];
-      if (roles && roles.length > 0) setAvailableRoles(roles);
-      const rawPicker =
-        payload?.currentPickerId ?? payload?.currentPicker ?? '';
-      if (rawPicker) setCurrentPickerId(rawPicker);
+      setAvailableRoles(payload?.availableRoles ?? []);
+      setCurrentPickerId(
+        payload?.currentPickerId ?? payload?.currentPicker ?? ''
+      );
     };
 
     const onRolesSelected = (updated: any[]) => {
@@ -172,9 +147,8 @@ const GameBoard = () => {
       }
     };
 
-    const onStartGamePhase = ({ phase }: { phase: number }) => {
+    const onStartGamePhase = ({ phase }: { phase: number }) =>
       setPhase(phase);
-    };
 
     const onOfferCards = ({ cards }: { cards: string[] }) => {
       setCardChoices(cards || []);
@@ -226,7 +200,7 @@ const GameBoard = () => {
     };
   }, [sessionName, myUsername, myId]);
 
-  // 🔄 Перевірка чи я зараз хожу
+  // 🧮 Перевірка активного гравця
   const amIPicker = useMemo(() => {
     if (!currentPickerId) return false;
     if (myId && currentPickerId === myId) return true;
@@ -234,7 +208,9 @@ const GameBoard = () => {
     const picker = players.find(
       p => p.id === currentPickerId || p.username === currentPickerId
     );
-    return picker ? picker.id === myId || picker.username === myUsername : false;
+    return picker
+      ? picker.id === myId || picker.username === myUsername
+      : false;
   }, [currentPickerId, myId, myUsername, players]);
 
   // 🟡 Дії
@@ -262,168 +238,52 @@ const GameBoard = () => {
     socket.emit('buildDistrict', { sessionName, card });
   };
 
-  const isActivePlayer = (p: Player) =>
-    !!currentPickerId &&
-    (p.id === currentPickerId || p.username === currentPickerId);
-
-  const currentTurnName = useMemo(() => {
-    const picker =
-      players.find(p => p.id === currentPickerId) ||
-      players.find(p => p.username === currentPickerId);
-    return picker?.username || '';
-  }, [players, currentPickerId]);
-
   // ===============================
-  // RENDER
+  // 🔰 Рендер
   // ===============================
   return (
     <div className="game-board">
-      {/* 📋 Список гравців */}
-      <div className="player-list-overlay">
-        <strong>Гравці:</strong>
-        <ul>
-          {players.length === 0 ? (
-            <li>Очікуємо гравців…</li>
-          ) : (
-            players.map(p => {
-              const active = isActivePlayer(p);
-              return (
-                <li
-                  key={`${p.id}-${p.username}`}
-                  className={active ? 'active-player' : ''}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <img
-                      src={p.avatar || '/icons/default-avatar.png'}
-                      alt={p.username}
-                      className="small-avatar"
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span>
-                        {p.username} {p.role && <>— {p.role}</>}
-                      </span>
-                      {typeof p.coins === 'number' && (
-                        <span
-                          className="player-coins"
-                          title={`${p.username} монети`}
-                        >
-                          <img
-                            src="/icons/coin.png"
-                            alt="Coin"
-                            className="coin-icon-small"
-                          />
-                          {p.coins}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {Array.isArray(p.built) && p.built.length > 0 && (
-                    <div className="player-built-list" style={{ marginTop: 6 }}>
-                      {p.built.map((card, i) =>
-                        renderCard(card, i, undefined, true)
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })
-          )}
-        </ul>
-      </div>
-
-      {/* 👥 Коло гравців */}
-      <div className="circle-container" aria-hidden>
-        {players.map((p, index) => {
-          const angle = players.length
-            ? (index / players.length) * 2 * Math.PI
-            : 0;
-          const x = 200 * Math.cos(angle);
-          const y = 200 * Math.sin(angle);
-          const active = isActivePlayer(p);
-
-          return (
-            <div
-              key={`${p.id}-${index}`}
-              className="player-avatar"
-              style={{ transform: `translate(${x}px, ${y}px)` }}
-              title={p.username}
-            >
-              <div style={{ position: 'relative' }}>
-                {p.avatar ? (
-                  <img src={p.avatar} alt={p.username} />
-                ) : (
-                  <div className="avatar-placeholder">
-                    {p.username.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                {active && (
-                  <span className="turn-icon" aria-hidden>
-                    ⏳
-                  </span>
-                )}
-              </div>
-              <span className="player-name">{p.username}</span>
-            </div>
-          );
-        })}
-      </div>
-
+      <PlayerList players={players} currentPickerId={currentPickerId} />
+      <PlayerCircle players={players} currentPickerId={currentPickerId} />
       <h1 className="game-title">🎮 Гра: {sessionName}</h1>
 
       <div className="game-phase">
         <div>Фаза: {phase === 1 ? 'Вибір ролей' : 'Гра у процесі'}</div>
-        {currentTurnName && (
-          <div style={{ marginTop: 6 }}>
-            Хід: <strong>{currentTurnName}</strong>
-          </div>
-        )}
       </div>
 
-      {/* Вибір ролей */}
-      {phase === 1 && amIPicker && availableRoles.length > 0 && (
-        <div className="overlay">
-          <div className="overlay-content">
-            <h3>Ваш хід! Оберіть роль:</h3>
-            <div className="role-card-grid">
-              {availableRoles.map(role => (
-                <button
-                  key={role}
-                  onClick={() => {
-                    socket.emit('pickRole', { sessionName, role });
-                    setAvailableRoles([]);
-                  }}
-                  className="role-card-button"
-                >
-                  <img
-                    src={`/ROLE_kard/${role}.png`}
-                    alt={role}
-                    className="role-card"
-                  />
-                  <span>{role}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <RoleSelectOverlay
+        phase={phase}
+        amIPicker={amIPicker}
+        availableRoles={availableRoles}
+        sessionName={sessionName}
+        players={players}
+        currentPickerId={currentPickerId}
+      />
 
-      {phase === 1 && !amIPicker && (
-        <p
-          className="waiting-text"
-          style={{ color: 'white', textAlign: 'center' }}
-        >
-          Очікування вибору ролі гравцем:{' '}
-          {(() => {
-            const picker =
-              players.find(p => p.id === currentPickerId) ||
-              players.find(p => p.username === currentPickerId);
-            return picker?.username || '...';
-          })()}
-        </p>
-      )}
+      <BuildOverlay
+        visible={showBuildOverlay}
+        myHand={myHand}
+        onBuild={buildDistrict}
+        onClose={() => setShowBuildOverlay(false)}
+      />
 
-      {/* Панель дій */}
+      <CardChoiceOverlay cards={cardChoices} onPick={pickCard} />
+      <HandOverlay
+        showHand={showHand}
+        setShowHand={setShowHand}
+        myHand={myHand}
+      />
+
+      {/* 🟣 Кнопка toggle руки */}
+      <div className="hand-toggle" onClick={() => setShowHand(true)}>
+        <img
+          src="/icons/arrow-down.png"
+          alt="Показати руку"
+          style={{ width: 40, height: 40, cursor: 'pointer' }}
+        />
+      </div>
+
+      {/* Кнопки дій */}
       {phase !== 1 && amIPicker && (
         <div className="actions-panel">
           <button onClick={takeCoins} disabled={buttonsDisabled}>
@@ -438,119 +298,6 @@ const GameBoard = () => {
           >
             🏗 Побудувати квартал
           </button>
-        </div>
-      )}
-
-      {/* Overlay побудови */}
-      {showBuildOverlay && (
-        <div className="overlay" onClick={() => setShowBuildOverlay(false)}>
-          <div
-            className="overlay-content"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ color: 'gold' }}>
-              Оберіть карту у вашій руці для побудови
-            </h3>
-            <p>Клацніть по карті, щоб побудувати її.</p>
-            <div
-              className="card-choice-grid"
-              style={{
-                display: 'flex',
-                gap: 12,
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
-              {myHand.map((card, i) =>
-                renderCard(card, i, () => buildDistrict(card))
-              )}
-            </div>
-            <button onClick={() => setShowBuildOverlay(false)}>
-              Скасувати
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Вибір карт (offerCards) */}
-      {cardChoices.length > 0 && (
-        <div className="overlay" onClick={() => setCardChoices([])}>
-          <div
-            className="overlay-content"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3>Оберіть карту:</h3>
-            <div
-              className="card-choice-grid"
-              style={{
-                display: 'flex',
-                gap: 12,
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
-              {cardChoices.map((card, i) =>
-                renderCard(card, i, () => pickCard(card))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Побудовані квартали */}
-      <div className="built-districts">
-        {builtDistricts.length ? (
-          builtDistricts.map((card, i) => renderCard(card, i))
-        ) : (
-          <p style={{ color: 'white', margin: 0 }}>Ще немає побудованих</p>
-        )}
-      </div>
-
-      {/* Монети */}
-      <div className="coins">
-        <img src="/icons/coin.png" alt="Coin" className="coin-icon" />
-        <span className="coin-count">{coins}</span>
-      </div>
-
-      {/* Інфо про роль */}
-      <div className="role-info-box">
-        <h3>{myRole}</h3>
-        <p>{roleDescription}</p>
-      </div>
-
-      {/* Кнопка toggle руки */}
-      <div className="hand-toggle" onClick={() => setShowHand(true)}>
-        <img
-          src="/icons/arrow-down.png"
-          alt="Показати руку"
-          style={{ width: 40, height: 40, cursor: 'pointer' }}
-        />
-      </div>
-
-      {/* Віконце з рукою */}
-      {showHand && (
-        <div className="overlay" onClick={() => setShowHand(false)}>
-          <div
-            className="overlay-content"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ color: 'gold' }}>Ваші карти</h3>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 12,
-                justifyContent: 'center',
-              }}
-            >
-              {myHand.length > 0 ? (
-                myHand.map((card, i) => renderCard(card, i))
-              ) : (
-                <p>Немає карт у руці</p>
-              )}
-            </div>
-            <button onClick={() => setShowHand(false)}>Закрити</button>
-          </div>
         </div>
       )}
     </div>
